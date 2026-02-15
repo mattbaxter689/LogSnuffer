@@ -1,1 +1,1 @@
-pub mod log_generator;
+pub mod log_methods;
