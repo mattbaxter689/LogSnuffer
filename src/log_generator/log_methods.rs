@@ -51,7 +51,17 @@ impl LogGenerator {
         let roll: f64 = self.rng.random();
         let (level, message) = if roll < 0.02 {
             (LogLevel::Error, "database connection failed".to_string())
-        } else if roll < 0.05 {
+        } else if roll < 0.04 {
+            (
+                LogLevel::Error,
+                "Payment processing failed for user 132".to_string(),
+            )
+        } else if roll < 0.06 {
+            (
+                LogLevel::Error,
+                "Resource access denied for user 345".to_string(),
+            )
+        } else if roll < 0.1 {
             (LogLevel::Warn, "cache miss".to_string())
         } else {
             (LogLevel::Info, "request completed".to_string())

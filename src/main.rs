@@ -1,5 +1,7 @@
+mod database;
 mod log_generator;
 mod redis_metrics;
+mod ticket_tool;
 use std::thread::sleep;
 use std::time::Duration;
 
