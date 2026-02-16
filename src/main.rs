@@ -1,7 +1,9 @@
+mod agents;
 mod database;
 mod log_generator;
 mod redis_metrics;
 mod ticket_tool;
+mod utils;
 use std::thread::sleep;
 use std::time::Duration;
 
