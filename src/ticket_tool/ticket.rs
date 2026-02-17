@@ -1,7 +1,4 @@
-use rig::{
-    agent::Agent, completion::ToolDefinition, providers::ollama, tool::Tool,
-    tools::think::ThinkError,
-};
+use rig::{completion::ToolDefinition, tool::Tool, tools::think::ThinkError};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -26,7 +23,7 @@ impl Tool for CreateTicketTool {
             description: "Creates a user specific or tech specific ticket".to_string(),
             parameters: json!({
                 "type": "object",
-                properties: {
+                "properties": {
                     "title": { "type": "string", "description": "Title for the ticket"},
                     "description": { "type": "string", "description": "Reason for ticket"}
                 }
@@ -34,10 +31,10 @@ impl Tool for CreateTicketTool {
         }
     }
 
-    async fn call(&self, args: Self::Args) -> Result<self::Output, Self::Error> {
+    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
         println!("\n🎫 TICKET CREATED");
-        println!("Title: {}", input.title);
-        println!("Description: {}\n", input.description);
+        println!("Title: {}", args.title);
+        println!("Description: {}\n", args.description);
 
         Ok("Ticket Created".into())
     }

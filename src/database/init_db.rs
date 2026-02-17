@@ -29,19 +29,21 @@ pub async fn init_db() -> Connection {
     })
     .await
     .expect("Error creating tables");
+
+    conn
 }
 
 pub async fn store_log(conn: Connection, log: LogEntry) {
     conn.call(move |c| {
         c.execute(
-            "INSERT INTO logs (timestamp, level, message, pod, api)
+            "INSERT INTO logs (timestamp, level, message, instance, service)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             (
                 log.timestamp,
                 format!("{:?}", log.level),
                 log.message,
-                log.pod,
-                log.api,
+                log.instance,
+                log.service,
             ),
         )
     })
