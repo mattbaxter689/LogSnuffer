@@ -829,6 +829,7 @@ version = "0.1.0"
 dependencies = [
  "async-rusqlite",
  "chrono",
+ "openssl-sys",
  "rand 0.10.0",
  "redis",
  "rig-core",
