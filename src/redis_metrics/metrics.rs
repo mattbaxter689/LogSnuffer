@@ -267,6 +267,34 @@ impl RedisMetrics {
         logs.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
         logs
     }
+
+    pub async fn fetch_summarized_errors(&mut self, limit: usize) -> Vec<(LogEntry, usize)> {
+        // Fetch more errors than we need to get good aggregation
+        let errors = self.fetch_recent_errors(limit * 3).await;
+
+        // Group by unique error pattern (service + instance + message)
+        let mut message_map: HashMap<String, (LogEntry, usize)> = HashMap::new();
+
+        for log in errors {
+            // Create a unique key for this error pattern
+            let key = format!("{}:{}:{}", log.service, log.instance, log.message);
+
+            message_map
+                .entry(key)
+                .and_modify(|(_, count)| *count += 1)
+                .or_insert((log, 1));
+        }
+
+        // Convert to vector and sort by frequency (most common first)
+        let mut summarized: Vec<_> = message_map.into_values().collect();
+        summarized.sort_by(|a, b| b.1.cmp(&a.1));
+
+        // Take only the top N patterns
+        summarized.truncate(limit);
+
+        summarized
+    }
+
     pub async fn is_agent_running(&mut self) -> bool {
         self.conn.exists("agent:running").await.unwrap_or(false)
     }

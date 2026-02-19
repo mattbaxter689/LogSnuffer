@@ -64,7 +64,7 @@ impl LogGenerator {
                     self.state = SystemState::Degraded;
                     self.state_ticks_remaining = rng.random_range(10..20);
                     println!(
-                        "🟡 STATE TRANSITION: Healthy -> Degraded (duration: {}s)",
+                        "STATE TRANSITION: Healthy -> Degraded (duration: {}s)",
                         self.state_ticks_remaining
                     );
                 } else {
@@ -76,7 +76,7 @@ impl LogGenerator {
                     self.state = SystemState::Healthy;
                     self.state_ticks_remaining = rng.random_range(60..120);
                     println!(
-                        "🟢 STATE TRANSITION: Degraded -> Healthy (duration: {}s)",
+                        "STATE TRANSITION: Degraded -> Healthy (duration: {}s)",
                         self.state_ticks_remaining
                     );
                 } else {
@@ -89,7 +89,7 @@ impl LogGenerator {
                     self.active_error = Some(errors[rng.random_range(0..errors.len())].to_string());
                     self.state_ticks_remaining = rng.random_range(20..40);
                     println!(
-                        "🔴 STATE TRANSITION: Degraded -> Incident ({}) (duration: {}s)",
+                        "STATE TRANSITION: Degraded -> Incident ({}) (duration: {}s)",
                         self.active_error.as_ref().unwrap(),
                         self.state_ticks_remaining
                     );
@@ -100,7 +100,7 @@ impl LogGenerator {
                 self.state_ticks_remaining = rng.random_range(15..30);
                 self.active_error = None;
                 println!(
-                    "🟡 STATE TRANSITION: Incident -> Degraded (cooldown: {}s)",
+                    "STATE TRANSITION: Incident -> Degraded (cooldown: {}s)",
                     self.state_ticks_remaining
                 );
             }

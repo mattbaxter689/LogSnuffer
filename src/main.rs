@@ -1,8 +1,10 @@
 mod agents;
+mod background;
 mod database;
 mod log_generator;
 mod planner;
 mod redis_metrics;
+mod server;
 mod ticket_tool;
 mod utils;
 

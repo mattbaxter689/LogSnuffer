@@ -33,7 +33,10 @@ pub async fn init_db() -> Connection {
     conn
 }
 
-pub async fn store_log(conn: Connection, log: LogEntry) {
+pub async fn store_log(
+    conn: Connection,
+    log: LogEntry,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     conn.call(move |c| {
         c.execute(
             "INSERT INTO logs (timestamp, level, message, instance, service)
@@ -47,6 +50,7 @@ pub async fn store_log(conn: Connection, log: LogEntry) {
             ),
         )
     })
-    .await
-    .expect("Error inserting data");
+    .await?;
+
+    Ok(())
 }

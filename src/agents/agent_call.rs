@@ -1,83 +1,73 @@
 use crate::log_generator::log_methods::LogEntry;
 use crate::ticket_tool::ticket::CreateTicketTool;
-use crate::utils::sample_logs;
-use redis::{AsyncCommands, Commands};
-use rig::client::{CompletionClient, Nothing};
-use rig::completion::Prompt;
-use rig::providers::ollama;
+use redis::AsyncCommands;
+use redis::aio::ConnectionManager;
+use rig::{
+    client::{CompletionClient, Nothing},
+    completion::Prompt,
+    providers::ollama,
+};
 
-// pub async fn run_user_agent(logs: Vec<LogEntry>) {
-//     let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
-//     let model = client.agent("qwen-agent:latest")
-//         .preamble(
-//             "
-//             You are an SRE assistant. Your job is to analyze these logs
-//             and determine if there are any that are user impacting vs system errors.
-//             Your goal is to find these user facing failures. They can contain payment issues,
-//             creation failures, access problems, and other user centric issues. You should identify
-//             these issues within the logs that are passed in. In the event that you do not find any
-//             user facing failures, simply return that there are no user issues needed. If you do find
-//             what is believed to be a user issue, call the create_ticket function. You should not return
-//             anything more than what is needed.
-//             "
-//         )
-//         .tool(CreateTicketTool)
-//         .build();
-//
-//     let sample = sample_logs(&logs);
-//     let response = agent.prompt(sample).await;
-//     println!("🧠 User Impact Check:\n{}\n", response.unwrap_or_default());
-// }
-//
-pub async fn run_dev_agent(logs: Vec<LogEntry>, confidence: f64, redis_url: &str) {
-    let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
+pub async fn run_dev_agent(
+    summarized_logs: Vec<(LogEntry, usize)>,
+    confidence: f64,
+    mut redis_conn: ConnectionManager,
+) {
+    use std::time::Instant;
+    let start = Instant::now();
+
+    println!(
+        "Agent started with {} error patterns...",
+        summarized_logs.len()
+    );
+
+    let client: ollama::Client = rig::providers::ollama::Client::new(Nothing).unwrap();
     let agent = client
         .agent("qwen-agent:latest")
         .preamble(
             "You are an expert log analyzer assistant. Your job is to analyze \
-            these logs and determine if there are any system errors within. These \
-            system errors can be database connection fails, resource failures, \
-            parameter issues, etc. In the event that you do not find any issues, say that \
-            there are no issues. In the event that you do find a system error, call the \
-            create_ticket function.",
+            these error patterns (shown with occurrence counts) and determine if there \
+            are any critical system errors. Each error shows how many times it occurred. \
+            Focus on high-frequency errors and critical patterns like database failures, \
+            OOM errors, or service crashes. In the event that you do not find any issues, \
+            say that there are no issues. In the event that you do find a critical system \
+            error, call the create_ticket function.",
         )
         .tool(CreateTicketTool)
         .build();
+
     let context = format!(
-        "Confidence: {:.2}\n\nLogs:\n{}",
+        "Confidence: {:.2}\n\nError Patterns (with occurrence counts):\n{}",
         confidence,
-        sample_logs(&logs)
+        format_summarized_logs(&summarized_logs)
     );
 
-    println!(
-        "📋 Sending {} logs to agent (confidence: {:.2})...",
-        logs.len(),
-        confidence
-    );
-
-    // Use prompt() correctly - it returns a Result
     match agent.prompt(&context).await {
         Ok(response) => {
-            println!("🧠 Dev Diagnosis:\n{}\n", response);
+            println!("LLM responded in {:?}", start.elapsed());
+            println!("Dev Diagnosis:\n{}\n", response);
         }
         Err(e) => {
-            eprintln!("❌ Agent error: {}", e);
+            eprintln!("Agent error: {}", e);
         }
     }
 
-    // Clear the running flag when done
-    match redis::Client::open(redis_url) {
-        Ok(client) => match redis::aio::ConnectionManager::new(client).await {
-            Ok(mut conn) => {
-                let _: Result<(), redis::RedisError> = conn.del("agent:running").await;
-                println!("🏁 Agent finished and flag cleared");
-            }
-            Err(e) => {
-                eprintln!("❌ Failed to connect to Redis to clear flag: {}", e);
-            }
-        },
-        Err(e) => {
-            eprintln!("❌ Failed to create Redis client: {}", e);
-        }
-    }
+    let _: Result<(), redis::RedisError> = redis_conn.del("agent:running").await;
+    println!("Agent finished in {:?}", start.elapsed());
+}
+
+fn format_summarized_logs(logs: &[(LogEntry, usize)]) -> String {
+    logs.iter()
+        .map(|(log, count)| {
+            format!(
+                "[{}x occurrences] {} | {} | {} | {}",
+                count,
+                format!("{:?}", log.level),
+                log.service,
+                log.instance,
+                log.message
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
