@@ -1,35 +1,57 @@
+mod agents;
+mod background;
+mod database;
 mod log_generator;
+mod planner;
 mod redis_metrics;
-use std::thread::sleep;
-use std::time::Duration;
+mod server;
+mod ticket_tool;
 
-use crate::log_generator::log_methods::{LogEntry, LogGenerator};
+use axum::{
+    Router,
+    routing::{get, post},
+};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tower_http::trace::TraceLayer;
+
+use crate::database::init_db::init_db;
 use crate::redis_metrics::metrics::RedisMetrics;
+use crate::server::handlers::{get_confidence, health_check, ingest_logs};
+use crate::server::state::AppState;
 
-fn main() {
-    let pods = vec![
-        "pod-1".into(),
-        "pod-2".into(),
-        "pod-3".into(),
-        "pod-4".into(),
-        "pod-5".into(),
-    ];
-    let apis = vec!["checkout".into(), "cart".into()];
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt::init();
 
-    let mut generator = LogGenerator::new(pods, apis);
-    let mut metrics = RedisMetrics::new("redis://127.0.0.1/", 120, 0.7);
+    println!("Starting Log Analytics API...");
 
-    let thresholds = (0.2, 0.5, 0.8);
+    let db = init_db().await;
+    println!("Database and tables initialized");
 
-    loop {
-        let log: LogEntry = generator.next_log();
-        metrics.ingest(&log);
+    let metrics = RedisMetrics::new("redis://127.0.0.1/", 30, 0.7, 5).await;
+    println!("Connected to Redis");
 
-        sleep(Duration::from_secs(5));
-        metrics.rotate();
+    let state = Arc::new(AppState {
+        db,
+        metrics: Mutex::new(metrics),
+    });
 
-        let confidence = metrics.compute_confidence();
+    let worker_state = state.clone();
+    tokio::spawn(async move {
+        background::worker::confidence_worker(worker_state).await;
+    });
+    println!("Started background worker");
 
-        println!("Confidence: {:.3}", confidence)
-    }
+    let app: Router = Router::new()
+        .route("/", get(health_check))
+        .route("/health", get(health_check))
+        .route("/api/logs", post(ingest_logs))
+        .route("/api/confidence", get(get_confidence))
+        .layer(TraceLayer::new_for_http())
+        .with_state(state);
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+
+    axum::serve(listener, app).await.unwrap();
 }
