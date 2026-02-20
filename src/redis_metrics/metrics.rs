@@ -10,9 +10,6 @@ pub struct RedisMetrics {
     pub decay_factor: f64,
     pub pods_len: usize,
     pub prev_confidence: f64,
-    pub prev_error_rate: f64,
-    pub prev_unique_pods: usize,
-    pub prev_unique_msgs: usize,
 }
 
 impl RedisMetrics {
@@ -34,9 +31,6 @@ impl RedisMetrics {
             pods_len,
             current_bucket: 0,
             prev_confidence: 0.0,
-            prev_error_rate: 0.0,
-            prev_unique_pods: 0,
-            prev_unique_msgs: 0,
         }
     }
 
@@ -211,7 +205,6 @@ impl RedisMetrics {
 
             let logs_key = format!("bucket:{}:logs", bucket_idx);
 
-            // ✅ .await then .unwrap_or_default
             let logs_json: Vec<String> =
                 self.conn.lrange(&logs_key, 0, -1).await.unwrap_or_default();
 

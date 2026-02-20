@@ -1,5 +1,4 @@
 pub enum PlannerAction {
-    Wait,
     TicketCreation(f64),
     Test,
 }

@@ -40,15 +40,12 @@ pub async fn confidence_worker(state: Arc<AppState>) {
                         run_dev_agent(summarized_errors, val, redis_conn).await;
                     });
                 } else {
-                    println!("⏳ Agent already running, skipping...");
+                    println!("Agent already running, skipping...");
                 }
             }
             PlannerAction::Test => {
                 // Only log occasionally to reduce noise
                 // println!("Metrics confidence not high enough");
-            }
-            PlannerAction::Wait => {
-                // println!("Waiting");
             }
         }
 
