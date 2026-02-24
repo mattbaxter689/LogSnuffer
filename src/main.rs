@@ -1,6 +1,7 @@
 mod agents;
 mod background;
 mod database;
+mod github;
 mod log_generator;
 mod planner;
 mod redis_metrics;
@@ -16,9 +17,11 @@ use tokio::sync::Mutex;
 use tower_http::trace::TraceLayer;
 
 use crate::database::init_db::init_db;
+use crate::github::client::GitHubClient;
 use crate::redis_metrics::metrics::RedisMetrics;
 use crate::server::handlers::{get_confidence, health_check, ingest_logs};
 use crate::server::state::AppState;
+use crate::server::webhook::github_webhook;
 
 #[tokio::main]
 async fn main() {
@@ -32,9 +35,21 @@ async fn main() {
     let metrics = RedisMetrics::new("redis://127.0.0.1/", 30, 0.7, 5).await;
     println!("Connected to Redis");
 
+    let github_token =
+        std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN environment variable must be set");
+    let github_owner =
+        std::env::var("GITHUB_OWNER").expect("GITHUB_OWNER environment variable must be set");
+    let github_repo =
+        std::env::var("GITHUB_REPO").expect("GITHUB_REPO environment variable must be set");
+
+    let github = GitHubClient::new(&github_token, github_owner, github_repo)
+        .expect("Failed to create GitHub client");
+    println!("GitHub client initialized");
+
     let state = Arc::new(AppState {
         db,
         metrics: Mutex::new(metrics),
+        github,
     });
 
     let worker_state = state.clone();
