@@ -2,7 +2,7 @@ use async_rusqlite::{Connection, rusqlite};
 use crate::log_generator::log_methods::LogEntry;
 
 pub async fn init_db() -> Connection {
-    let conn = Connection::open("logs.db")
+    let conn = Connection::open("db/logs.db")
         .await
         .expect("Failed to open database");
 
