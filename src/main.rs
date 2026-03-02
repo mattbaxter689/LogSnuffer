@@ -35,7 +35,7 @@ async fn main() {
     let db = init_db().await;
     println!("Database and tables initialized");
 
-    let metrics = RedisMetrics::new("redis://127.0.0.1/", 30, 0.7, 5).await;
+    let metrics = RedisMetrics::new("redis://redis", 30, 0.7, 5).await;
     println!("Connected to Redis");
 
     let github_token =

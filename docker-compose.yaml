@@ -7,6 +7,18 @@ services:
     volumes:
       - redis_data:/data
 
+  axum-server:
+    build: .
+    env_file:
+      - .env
+    command: /app/server
+    volumes:
+      - ./db/logs.db:/app/db/logs.db
+    ports: 
+      - "3000:3000"
+    depends_on:
+      - redis
+
 volumes:
   redis_data:
     driver: local
