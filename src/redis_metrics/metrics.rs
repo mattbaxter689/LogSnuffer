@@ -177,19 +177,19 @@ impl RedisMetrics {
 
         self.prev_confidence = final_val.clamp(0.0, 1.0);
 
-        println!(
-            "Debug: short={:.0}/{:.0} ({:.2}%), long={:.0}/{:.0} ({:.2}%), ratio={:.2}, dom_msg={:.2}, score={:.3}",
-            short_errors,
-            short_total,
-            short_rate * 100.0,
-            long_errors,
-            long_total,
-            long_rate * 100.0,
-            ratio,
-            dom_msg_ratio,
-            final_val
-        );
-
+        // println!(
+        //     "Debug: short={:.0}/{:.0} ({:.2}%), long={:.0}/{:.0} ({:.2}%), ratio={:.2}, dom_msg={:.2}, score={:.3}",
+        //     short_errors,
+        //     short_total,
+        //     short_rate * 100.0,
+        //     long_errors,
+        //     long_total,
+        //     long_rate * 100.0,
+        //     ratio,
+        //     dom_msg_ratio,
+        //     final_val
+        // );
+        //
         self.prev_confidence
     }
 

@@ -1,41 +1,150 @@
-use rig::{completion::ToolDefinition, tool::Tool, tools::think::ThinkError};
+use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use snafu::{ResultExt, Snafu};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct TicketInput {
-    title: String,
-    description: String,
+#[derive(Debug, Snafu)]
+pub enum AnalysisToolError {
+    #[snafu(display("Serialization failed: {source}"))]
+    Serialization { source: serde_json::Error },
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+pub struct AnalysisArgs {
+    pub critical_errors: Vec<CriticalError>,
+    pub warnings: Vec<Warning>,
+    pub summary: String,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct CriticalError {
+    pub error_pattern: String,
+    // severity could also be an enum, and most likely should be
+    pub severity: String,
+    pub description: String,
+    pub suggested_fix: Option<String>,
+    pub should_create_issue: bool,
+}
+
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct Warning {
+    pub error_pattern: String,
+    pub description: String,
+    pub monitoring_recommendation: String,
+}
+
+// Helper struct to parse the tool call response
+#[derive(Deserialize, Debug)]
+pub struct ToolCallResponse {
+    pub name: String,
+    pub arguments: AnalysisArgs,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct CreateTicketTool;
+pub struct AnalysisTool;
 
-impl Tool for CreateTicketTool {
-    const NAME: &'static str = "create_ticket";
-    type Error = ThinkError;
-    type Args = TicketInput;
+impl Tool for AnalysisTool {
+    const NAME: &'static str = "submit_analysis";
+
+    type Error = AnalysisToolError;
+    type Args = AnalysisArgs;
     type Output = String;
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
-            name: "Ticket Creator".to_string(),
-            description: "Creates a user specific or tech specific ticket".to_string(),
+            name: Self::NAME.to_string(),
+            description: "Submit your analysis of the error logs, including which errors warrant GitHub issues and which are just warnings to monitor".to_string(),
             parameters: json!({
                 "type": "object",
                 "properties": {
-                    "title": { "type": "string", "description": "Title for the ticket"},
-                    "description": { "type": "string", "description": "Reason for ticket"}
-                }
+                    "critical_errors": {
+                        "type": "array",
+                        "description": "Errors that are severe enough to warrant GitHub issues",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "error_pattern": {
+                                    "type": "string",
+                                    "description": "The error message pattern (e.g., 'db_connection_timeout')"
+                                },
+                                "severity": {
+                                    "type": "string",
+                                    "enum": ["critical", "high", "medium"],
+                                    "description": "Severity level"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Detailed description of the issue and its impact"
+                                },
+                                "suggested_fix": {
+                                    "type": "string",
+                                    "description": "Optional: suggested fix or investigation steps"
+                                },
+                                "should_create_issue": {
+                                    "type": "boolean",
+                                    "description": "Whether this warrants a GitHub issue"
+                                }
+                            },
+                            "required": ["error_pattern", "severity", "description", "should_create_issue"]
+                        }
+                    },
+                    "warnings": {
+                        "type": "array",
+                        "description": "Errors that should be monitored but don't need immediate issues",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "error_pattern": {
+                                    "type": "string",
+                                    "description": "The error message pattern"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "Description of the warning"
+                                },
+                                "monitoring_recommendation": {
+                                    "type": "string",
+                                    "description": "How to monitor or when to escalate"
+                                }
+                            },
+                            "required": ["error_pattern", "description", "monitoring_recommendation"]
+                        }
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "Overall summary of the system health"
+                    }
+                },
+                "required": ["critical_errors", "warnings", "summary"]
             }),
         }
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("\n🎫 TICKET CREATED");
-        println!("Title: {}", args.title);
-        println!("Description: {}\n", args.description);
+        println!("ANALYSIS RECEIVED:");
+        println!("   Summary: {}", args.summary);
+        println!("   Critical Errors: {}", args.critical_errors.len());
+        println!("   Warnings: {}", args.warnings.len());
 
-        Ok("Ticket Created".into())
+        for error in &args.critical_errors {
+            println!(
+                " {} ({}): {}",
+                error.error_pattern,
+                error.severity,
+                if error.should_create_issue {
+                    "CREATING ISSUE"
+                } else {
+                    "NO ISSUE"
+                }
+            );
+        }
+
+        for warning in &args.warnings {
+            println!(" {}: {}", warning.error_pattern, warning.description);
+        }
+
+        let json = serde_json::to_string(&args).context(SerializationSnafu)?;
+
+        Ok(json)
     }
 }

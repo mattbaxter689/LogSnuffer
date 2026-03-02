@@ -1,6 +1,7 @@
 pub mod agents;
 pub mod background;
 pub mod database;
+pub mod github;
 pub mod log_generator;
 pub mod planner;
 pub mod redis_metrics;

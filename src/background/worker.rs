@@ -30,6 +30,8 @@ pub async fn confidence_worker(state: Arc<AppState>) {
                     // Fetch summarized errors
                     let summarized_errors = metrics.fetch_summarized_errors(15).await;
                     let redis_conn = metrics.conn.clone();
+                    let db_conn = state.db.clone();
+                    let github_client = state.github.clone();
 
                     println!(
                         "Triggering agent analysis with {} error patterns...",
@@ -37,15 +39,15 @@ pub async fn confidence_worker(state: Arc<AppState>) {
                     );
 
                     tokio::spawn(async move {
-                        run_dev_agent(summarized_errors, val, redis_conn).await;
+                        run_dev_agent(summarized_errors, val, redis_conn, db_conn, github_client)
+                            .await;
                     });
                 } else {
                     println!("Agent already running, skipping...");
                 }
             }
-            PlannerAction::Test => {
-                // Only log occasionally to reduce noise
-                // println!("Metrics confidence not high enough");
+            PlannerAction::Wait => {
+                println!("No issues found. Waiting for more information");
             }
         }
 
