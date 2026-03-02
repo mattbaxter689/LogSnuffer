@@ -9,14 +9,14 @@ pub enum AnalysisToolError {
     Serialization { source: serde_json::Error },
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 pub struct AnalysisArgs {
     pub critical_errors: Vec<CriticalError>,
     pub warnings: Vec<Warning>,
     pub summary: String,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CriticalError {
     pub error_pattern: String,
     // severity could also be an enum, and most likely should be
@@ -26,7 +26,7 @@ pub struct CriticalError {
     pub should_create_issue: bool,
 }
 
-#[derive(Deserialize, Serialize, Clone)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct Warning {
     pub error_pattern: String,
     pub description: String,

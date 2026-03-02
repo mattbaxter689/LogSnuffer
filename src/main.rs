@@ -12,6 +12,7 @@ use axum::{
     Router,
     routing::{get, post},
 };
+use rustls::crypto::{CryptoProvider, ring::default_provider};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::trace::TraceLayer;
@@ -25,6 +26,8 @@ use crate::server::webhook::github_webhook;
 
 #[tokio::main]
 async fn main() {
+    CryptoProvider::install_default(default_provider()).unwrap();
+
     tracing_subscriber::fmt::init();
 
     println!("Starting Log Analytics API...");
@@ -63,6 +66,7 @@ async fn main() {
         .route("/health", get(health_check))
         .route("/api/logs", post(ingest_logs))
         .route("/api/confidence", get(get_confidence))
+        .route("/webhooks/github", post(github_webhook))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

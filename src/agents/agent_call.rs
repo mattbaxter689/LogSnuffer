@@ -4,6 +4,7 @@ use redis::aio::ConnectionManager;
 use rig::client::{CompletionClient, Nothing};
 use rig::completion::Prompt;
 use rig::providers::ollama;
+use serde::Deserialize;
 
 use crate::database::init_db::{fetch_related_issues, store_github_issue, store_warning};
 use crate::github::client::GitHubClient;
@@ -11,6 +12,13 @@ use crate::github::issues::{create_issue, fetch_closed_issues};
 use crate::github::similarity::find_similar_issues;
 use crate::log_generator::log_methods::LogEntry;
 use crate::ticket_tool::ticket::{AnalysisArgs, AnalysisTool, CriticalError};
+
+// Helper struct to parse the tool call response
+#[derive(Deserialize, Debug)]
+struct ToolCallResponse {
+    name: String,
+    arguments: AnalysisArgs,
+}
 
 pub async fn run_dev_agent(
     summarized_logs: Vec<(LogEntry, usize)>,
@@ -49,6 +57,8 @@ pub async fn run_dev_agent(
             2. Identify which errors should just be monitored as warnings\n\
             3. Suggest fixes or investigation steps for critical errors\n\
             4. Consider error frequency and severity\n\n\
+            When calling the tool, provide ONLY the raw argument values.
+            Do NOT include JSON schema fields like 'type' or 'items'.
             Context: We have {} historical closed issues that may be related.\n\n\
             Guidelines:\n\
             - Create issues for: repeated failures, service outages, data loss risks\n\
@@ -70,42 +80,54 @@ pub async fn run_dev_agent(
     match agent.prompt(&context).await {
         Ok(response) => {
             println!("LLM responded in {:?}", start.elapsed());
+            println!("Response: {}", response);
 
             // Parse the agent's analysis
-            if let Ok(analysis) = serde_json::from_str::<AnalysisArgs>(&response) {
-                println!("Analysis Summary: {}", analysis.summary);
+            match serde_json::from_str::<ToolCallResponse>(&response) {
+                Ok(tool_call) => {
+                    println!("Tool Name: {}", tool_call.name);
 
-                // Process critical errors
-                for error in analysis.critical_errors {
-                    if error.should_create_issue {
-                        if let Err(e) = process_critical_error(
-                            error,
-                            &github_client,
-                            db_conn.clone(),
-                            &closed_issues,
-                        )
-                        .await
-                        {
-                            eprintln!("Failed to process critical error: {}", e);
-                        }
-                    }
+                    let analysis: AnalysisArgs = tool_call.arguments;
+                    println!("Analysis Summary: {}", analysis.summary);
+
+                    // Process critical errors
+                    // for error in analysis.critical_errors {
+                    //     if error.should_create_issue {
+                    //         if let Err(e) = process_critical_error(
+                    //             error,
+                    //             &github_client,
+                    //             db_conn.clone(),
+                    //             &closed_issues,
+                    //         )
+                    //         .await
+                    //         {
+                    //             eprintln!("Failed to process critical error: {}", e);
+                    //         }
+                    //     }
+                    // }
+                    //
+                    // // Store warnings in database
+                    // for warning in analysis.warnings {
+                    //     let db = db_conn.clone();
+                    //     tokio::spawn(async move {
+                    //         if let Err(e) = store_warning(
+                    //             db,
+                    //             warning.error_pattern.clone(),
+                    //             "warning".to_string(),
+                    //             warning.description.clone(),
+                    //         )
+                    //         .await
+                    //         {
+                    //             eprintln!("Failed to store warning: {}", e);
+                    //         }
+                    //     });
+                    // }
                 }
-
-                // Store warnings in database
-                for warning in analysis.warnings {
-                    let db = db_conn.clone();
-                    tokio::spawn(async move {
-                        if let Err(e) = store_warning(
-                            db,
-                            warning.error_pattern.clone(),
-                            "warning".to_string(),
-                            warning.description.clone(),
-                        )
-                        .await
-                        {
-                            eprintln!("Failed to store warning: {}", e);
-                        }
-                    });
+                Err(e) => {
+                    eprintln!(
+                        "Failed to parse AnalysisArgs: {}\nResponse was:\n{}",
+                        e, response
+                    );
                 }
             }
         }
@@ -179,6 +201,8 @@ async fn process_critical_error(
         .map(|(n, _)| *n)
         .chain(db_related.into_iter())
         .collect();
+
+    println!("Storing github issue");
 
     store_github_issue(
         db_conn,
