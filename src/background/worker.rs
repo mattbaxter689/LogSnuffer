@@ -46,9 +46,8 @@ pub async fn confidence_worker(state: Arc<AppState>) {
                     println!("Agent already running, skipping...");
                 }
             }
-            PlannerAction::Test => {
-                // Only log occasionally to reduce noise
-                // println!("Metrics confidence not high enough");
+            PlannerAction::Wait => {
+                println!("No issues found. Waiting for more information");
             }
         }
 

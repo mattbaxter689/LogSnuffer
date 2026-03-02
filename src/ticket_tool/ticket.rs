@@ -33,6 +33,13 @@ pub struct Warning {
     pub monitoring_recommendation: String,
 }
 
+// Helper struct to parse the tool call response
+#[derive(Deserialize, Debug)]
+pub struct ToolCallResponse {
+    pub name: String,
+    pub arguments: AnalysisArgs,
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct AnalysisTool;
 

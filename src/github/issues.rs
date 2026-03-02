@@ -63,16 +63,52 @@ pub async fn create_issue(
 pub async fn fetch_closed_issues(
     client: &GitHubClient,
 ) -> Result<Vec<IssueMetadata>, Box<dyn std::error::Error>> {
-    let issues = client
-        .client()
-        .issues(client.owner(), client.repo())
-        .list()
-        .state(State::Closed)
-        .per_page(100)
-        .send()
-        .await?;
+    println!("   🔧 GitHub API: Fetching closed issues...");
+    println!("      Repository: {}/{}", client.owner(), client.repo());
 
-    Ok(issues.items.into_iter().map(IssueMetadata::from).collect())
+    let mut all_issues = Vec::new();
+    let mut page = 1u32;
+
+    // Fetch multiple pages if needed
+    loop {
+        println!("      Fetching page {}...", page);
+
+        let page_result = client
+            .client()
+            .issues(client.owner(), client.repo())
+            .list()
+            .state(State::Closed)
+            .per_page(100)
+            .page(page)
+            .send()
+            .await?;
+
+        let items_count = page_result.items.len();
+        println!("      Found {} issues on page {}", items_count, page);
+
+        if items_count == 0 {
+            break;
+        }
+
+        all_issues.extend(page_result.items.into_iter().map(IssueMetadata::from));
+
+        // If we got less than 100, we're on the last page
+        if items_count < 100 {
+            break;
+        }
+
+        page += 1;
+
+        // Safety limit to avoid infinite loops
+        if page > 10 {
+            println!("      ⚠️  Reached page limit, stopping");
+            break;
+        }
+    }
+
+    println!("   ✅ Total closed issues fetched: {}", all_issues.len());
+
+    Ok(all_issues)
 }
 
 pub async fn fetch_all_issues(

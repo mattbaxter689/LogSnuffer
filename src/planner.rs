@@ -1,12 +1,12 @@
 pub enum PlannerAction {
     TicketCreation(f64),
-    Test,
+    Wait,
 }
 
 pub fn planner(confidence: &f64) -> PlannerAction {
-    if *confidence > 0.5 {
+    if *confidence > 0.8 {
         PlannerAction::TicketCreation(*confidence)
     } else {
-        PlannerAction::Test
+        PlannerAction::Wait
     }
 }

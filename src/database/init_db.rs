@@ -199,8 +199,7 @@ pub async fn fetch_related_issues(
             .filter_map(Result::ok)
             .collect();
         
-        Ok::<Vec<u64>, rusqlite::Error>(issues)
-
+        Ok::<_, rusqlite::Error>(issues)
     })
     .await?;
 

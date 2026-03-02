@@ -4,21 +4,13 @@ use redis::aio::ConnectionManager;
 use rig::client::{CompletionClient, Nothing};
 use rig::completion::Prompt;
 use rig::providers::ollama;
-use serde::Deserialize;
 
 use crate::database::init_db::{fetch_related_issues, store_github_issue, store_warning};
 use crate::github::client::GitHubClient;
 use crate::github::issues::{create_issue, fetch_closed_issues};
 use crate::github::similarity::find_similar_issues;
 use crate::log_generator::log_methods::LogEntry;
-use crate::ticket_tool::ticket::{AnalysisArgs, AnalysisTool, CriticalError};
-
-// Helper struct to parse the tool call response
-#[derive(Deserialize, Debug)]
-struct ToolCallResponse {
-    name: String,
-    arguments: AnalysisArgs,
-}
+use crate::ticket_tool::ticket::{AnalysisArgs, AnalysisTool, CriticalError, ToolCallResponse};
 
 pub async fn run_dev_agent(
     summarized_logs: Vec<(LogEntry, usize)>,
@@ -80,48 +72,46 @@ pub async fn run_dev_agent(
     match agent.prompt(&context).await {
         Ok(response) => {
             println!("LLM responded in {:?}", start.elapsed());
-            println!("Response: {}", response);
+
+            let cleaned = clean_llm_json(&response);
 
             // Parse the agent's analysis
-            match serde_json::from_str::<ToolCallResponse>(&response) {
+            match serde_json::from_str::<ToolCallResponse>(cleaned) {
                 Ok(tool_call) => {
-                    println!("Tool Name: {}", tool_call.name);
-
                     let analysis: AnalysisArgs = tool_call.arguments;
                     println!("Analysis Summary: {}", analysis.summary);
 
                     // Process critical errors
-                    // for error in analysis.critical_errors {
-                    //     if error.should_create_issue {
-                    //         if let Err(e) = process_critical_error(
-                    //             error,
-                    //             &github_client,
-                    //             db_conn.clone(),
-                    //             &closed_issues,
-                    //         )
-                    //         .await
-                    //         {
-                    //             eprintln!("Failed to process critical error: {}", e);
-                    //         }
-                    //     }
-                    // }
-                    //
-                    // // Store warnings in database
-                    // for warning in analysis.warnings {
-                    //     let db = db_conn.clone();
-                    //     tokio::spawn(async move {
-                    //         if let Err(e) = store_warning(
-                    //             db,
-                    //             warning.error_pattern.clone(),
-                    //             "warning".to_string(),
-                    //             warning.description.clone(),
-                    //         )
-                    //         .await
-                    //         {
-                    //             eprintln!("Failed to store warning: {}", e);
-                    //         }
-                    //     });
-                    // }
+                    for error in analysis.critical_errors {
+                        if error.should_create_issue
+                            && let Err(e) = process_critical_error(
+                                error,
+                                &github_client,
+                                db_conn.clone(),
+                                &closed_issues,
+                            )
+                            .await
+                        {
+                            eprintln!("Failed to process critical error: {}", e);
+                        }
+                    }
+
+                    // Store warnings in database
+                    for warning in analysis.warnings {
+                        let db = db_conn.clone();
+                        tokio::spawn(async move {
+                            if let Err(e) = store_warning(
+                                db,
+                                warning.error_pattern.clone(),
+                                "warning".to_string(),
+                                warning.description.clone(),
+                            )
+                            .await
+                            {
+                                eprintln!("Failed to store warning: {}", e);
+                            }
+                        });
+                    }
                 }
                 Err(e) => {
                     eprintln!(
@@ -140,6 +130,23 @@ pub async fn run_dev_agent(
     println!("Agent finished in {:?}", start.elapsed());
 }
 
+fn clean_llm_json(response: &str) -> &str {
+    let trimmed = response.trim();
+
+    if trimmed.starts_with("```") {
+        // Remove first ``` line
+        let without_start = trimmed
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim();
+
+        // Remove trailing ```
+        without_start.trim_end_matches("```").trim()
+    } else {
+        trimmed
+    }
+}
+
 async fn process_critical_error(
     error: CriticalError,
     github_client: &GitHubClient,
@@ -149,7 +156,7 @@ async fn process_critical_error(
     println!("Processing critical error: {}", error.error_pattern);
 
     // Find similar closed issues
-    let similar = find_similar_issues(&error.error_pattern, closed_issues, 0.5);
+    let similar = find_similar_issues(&error.error_pattern, closed_issues, 0.2);
 
     // Fetch from database too
     let db_related = fetch_related_issues(db_conn.clone(), error.error_pattern.clone()).await?;
@@ -227,12 +234,8 @@ fn format_summarized_logs(logs: &[(LogEntry, usize)]) -> String {
     logs.iter()
         .map(|(log, count)| {
             format!(
-                "[{}x occurrences] {} | {} | {} | {}",
-                count,
-                format!("{:?}", log.level),
-                log.service,
-                log.instance,
-                log.message
+                "[{}x occurrences] {:?} | {} | {} | {}",
+                count, log.level, log.service, log.instance, log.message
             )
         })
         .collect::<Vec<_>>()
