@@ -1354,6 +1354,7 @@ dependencies = [
  "redis",
  "reqwest 0.13.2",
  "rig-core",
+ "rustls",
  "seahash",
  "serde",
  "serde_json",
