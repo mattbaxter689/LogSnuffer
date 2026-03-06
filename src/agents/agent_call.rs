@@ -98,19 +98,16 @@ pub async fn run_dev_agent(
 
                     // Store warnings in database
                     for warning in analysis.warnings {
-                        let db = db_conn.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) = store_warning(
-                                db,
-                                warning.error_pattern.clone(),
-                                "warning".to_string(),
-                                warning.description.clone(),
-                            )
-                            .await
-                            {
-                                eprintln!("Failed to store warning: {}", e);
-                            }
-                        });
+                        if let Err(e) = store_warning(
+                            db_conn.clone(),
+                            warning.error_pattern.clone(),
+                            "warning".to_string(),
+                            warning.description.clone(),
+                        )
+                        .await
+                        {
+                            eprintln!("Failed to store warning: {}", e);
+                        }
                     }
                 }
                 Err(e) => {
