@@ -63,15 +63,15 @@ pub async fn create_issue(
 pub async fn fetch_closed_issues(
     client: &GitHubClient,
 ) -> Result<Vec<IssueMetadata>, Box<dyn std::error::Error>> {
-    println!("   🔧 GitHub API: Fetching closed issues...");
-    println!("      Repository: {}/{}", client.owner(), client.repo());
+    println!("GitHub API: Fetching closed issues...");
+    println!("Repository: {}/{}", client.owner(), client.repo());
 
     let mut all_issues = Vec::new();
     let mut page = 1u32;
 
     // Fetch multiple pages if needed
     loop {
-        println!("      Fetching page {}...", page);
+        println!("Fetching page {}...", page);
 
         let page_result = client
             .client()
@@ -84,7 +84,7 @@ pub async fn fetch_closed_issues(
             .await?;
 
         let items_count = page_result.items.len();
-        println!("      Found {} issues on page {}", items_count, page);
+        println!("Found {} issues on page {}", items_count, page);
 
         if items_count == 0 {
             break;
@@ -101,12 +101,12 @@ pub async fn fetch_closed_issues(
 
         // Safety limit to avoid infinite loops
         if page > 10 {
-            println!("      ⚠️  Reached page limit, stopping");
+            println!("Reached page limit, stopping");
             break;
         }
     }
 
-    println!("   ✅ Total closed issues fetched: {}", all_issues.len());
+    println!("Total closed issues fetched: {}", all_issues.len());
 
     Ok(all_issues)
 }

@@ -35,7 +35,7 @@ pub async fn github_webhook(
             if let Err(e) = update_issue_state(db, issue_number, issue_state).await {
                 eprintln!("Failed to update issue state: {}", e);
             } else {
-                println!("✅ Updated issue #{} state in database", issue_number);
+                println!("Updated issue #{} state in database", issue_number);
             }
         });
     }
