@@ -37,7 +37,7 @@ impl RedisMetrics {
     pub async fn ingest(&mut self, log: &LogEntry) {
         let bucket_key = format!("bucket:{}", self.current_bucket);
 
-        // ✅ All operations need .await
+        //All operations need .await
         let _: Result<i32, _> = self.conn.hincr(&bucket_key, "total_logs", 1).await;
 
         if log.level == LogLevel::Error {
@@ -63,7 +63,7 @@ impl RedisMetrics {
         self.current_bucket = (self.current_bucket + 1) % self.window_size;
         let bucket_key = format!("bucket:{}", self.current_bucket);
 
-        // ✅ All deletes need .await
+        //All deletes need .await
         let _: Result<(), _> = self.conn.del(bucket_key.clone()).await;
         let _: Result<(), _> = self.conn.del(format!("{}:pods", bucket_key)).await;
         let _: Result<(), _> = self.conn.del(format!("{}:messages", bucket_key)).await;
@@ -83,7 +83,7 @@ impl RedisMetrics {
         for i in 0..self.window_size {
             let bucket_key = format!("bucket:{}", i);
 
-            // ✅ .await then .unwrap_or
+            //.await then .unwrap_or
             let logs: u32 = self.conn.hget(&bucket_key, "total_logs").await.unwrap_or(0);
 
             let errors: u32 = self.conn.hget(&bucket_key, "error_logs").await.unwrap_or(0);
@@ -105,7 +105,7 @@ impl RedisMetrics {
                 long_errors += errors as f64 * age_weight;
             }
 
-            // ✅ .await then .unwrap_or_default
+            //.await then .unwrap_or_default
             let pods: Vec<String> = self
                 .conn
                 .smembers(format!("{}:pods", bucket_key))
@@ -116,7 +116,7 @@ impl RedisMetrics {
                 unique_pods.insert(pod);
             }
 
-            // ✅ .await then .unwrap_or_default
+            //.await then .unwrap_or_default
             let msgs: HashMap<u64, u32> = self
                 .conn
                 .hgetall(format!("{}:messages", bucket_key))
@@ -246,7 +246,7 @@ impl RedisMetrics {
 
             let logs_key = format!("bucket:{}:logs", bucket_idx);
 
-            // ✅ .await then .unwrap_or_default
+            //.await then .unwrap_or_default
             let logs_json: Vec<String> =
                 self.conn.lrange(&logs_key, 0, -1).await.unwrap_or_default();
 

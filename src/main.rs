@@ -35,7 +35,14 @@ async fn main() {
     let db = init_db().await;
     println!("Database and tables initialized");
 
-    let metrics = RedisMetrics::new("redis://redis", 30, 0.7, 5).await;
+    let metrics = RedisMetrics::new(
+        &std::env::var("REDIS_URL")
+            .expect("REDIS_URL environment variable is missing. Must be set"),
+        30,
+        0.7,
+        5,
+    )
+    .await;
     println!("Connected to Redis");
 
     let github_token =

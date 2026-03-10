@@ -1,13 +1,6 @@
 use crate::github::client::GitHubClient;
 use octocrab::models::issues::Issue;
 use octocrab::params::State;
-use snafu::Snafu;
-
-#[derive(Debug, Snafu)]
-pub enum GitHubError {
-    #[snafu(display("Failed to create issue: {source}"))]
-    CreateIssue { source: octocrab::Error },
-}
 
 #[derive(Clone, Debug)]
 pub struct IssueMetadata {
@@ -26,7 +19,7 @@ impl From<Issue> for IssueMetadata {
             number: issue.number,
             title: issue.title,
             body: issue.body,
-            // ✅ Fix: Convert IssueState enum to string properly
+            // Convert IssueState enum to string properly
             state: match issue.state {
                 octocrab::models::IssueState::Open => "open".to_string(),
                 octocrab::models::IssueState::Closed => "closed".to_string(),
@@ -44,7 +37,7 @@ pub async fn create_issue(
     title: &str,
     body: &str,
     labels: Vec<String>,
-) -> Result<u64, GitHubError> {
+) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     let issue = client
         .client()
         .issues(client.owner(), client.repo())
@@ -52,8 +45,7 @@ pub async fn create_issue(
         .body(body)
         .labels(labels)
         .send()
-        .await
-        .map_err(|e| GitHubError::CreateIssue { source: e })?;
+        .await?;
 
     println!("Created GitHub issue #{}: {}", issue.number, issue.title);
 
@@ -63,15 +55,15 @@ pub async fn create_issue(
 pub async fn fetch_closed_issues(
     client: &GitHubClient,
 ) -> Result<Vec<IssueMetadata>, Box<dyn std::error::Error>> {
-    println!("   🔧 GitHub API: Fetching closed issues...");
-    println!("      Repository: {}/{}", client.owner(), client.repo());
+    println!("GitHub API: Fetching closed issues...");
+    println!("Repository: {}/{}", client.owner(), client.repo());
 
     let mut all_issues = Vec::new();
     let mut page = 1u32;
 
     // Fetch multiple pages if needed
     loop {
-        println!("      Fetching page {}...", page);
+        println!("Fetching page {}...", page);
 
         let page_result = client
             .client()
@@ -84,7 +76,7 @@ pub async fn fetch_closed_issues(
             .await?;
 
         let items_count = page_result.items.len();
-        println!("      Found {} issues on page {}", items_count, page);
+        println!("Found {} issues on page {}", items_count, page);
 
         if items_count == 0 {
             break;
@@ -101,12 +93,12 @@ pub async fn fetch_closed_issues(
 
         // Safety limit to avoid infinite loops
         if page > 10 {
-            println!("      ⚠️  Reached page limit, stopping");
+            println!("Reached page limit, stopping");
             break;
         }
     }
 
-    println!("   ✅ Total closed issues fetched: {}", all_issues.len());
+    println!("Total closed issues fetched: {}", all_issues.len());
 
     Ok(all_issues)
 }
@@ -130,7 +122,7 @@ pub async fn add_comment_to_issue(
     client: &GitHubClient,
     issue_number: u64,
     comment: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     client
         .client()
         .issues(client.owner(), client.repo())
