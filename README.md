@@ -12,7 +12,7 @@ While this is not an agentic system, this is an AI augmented log analyzer tool. 
 
 As noted toward the end of this file, there are examples of how the project can be updated/upgraded. I want to highlight that I want to implement the prometheus metrics, as well as the rate limiting. These are something that are critical regardless of the system, and I think that they are very important to add to systems like this, which will have a very high throughput.
 
-I am satisfied with where this project is, but I want to take it further to be a true agentic system, that can handle production-like operations.
+I am satisfied with where this project is, but I want to take it further to be a true agentic system, that can handle production-like operations. The next steps for me will be to implement the actual agentic system, create the metrics for prometheus, as well as the rate limiting or authentication
 
 ---
 
