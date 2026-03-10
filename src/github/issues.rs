@@ -1,13 +1,6 @@
 use crate::github::client::GitHubClient;
 use octocrab::models::issues::Issue;
 use octocrab::params::State;
-use snafu::Snafu;
-
-#[derive(Debug, Snafu)]
-pub enum GitHubError {
-    #[snafu(display("Failed to create issue: {source}"))]
-    CreateIssue { source: octocrab::Error },
-}
 
 #[derive(Clone, Debug)]
 pub struct IssueMetadata {
@@ -26,7 +19,7 @@ impl From<Issue> for IssueMetadata {
             number: issue.number,
             title: issue.title,
             body: issue.body,
-            // ✅ Fix: Convert IssueState enum to string properly
+            // Convert IssueState enum to string properly
             state: match issue.state {
                 octocrab::models::IssueState::Open => "open".to_string(),
                 octocrab::models::IssueState::Closed => "closed".to_string(),
@@ -44,7 +37,7 @@ pub async fn create_issue(
     title: &str,
     body: &str,
     labels: Vec<String>,
-) -> Result<u64, GitHubError> {
+) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
     let issue = client
         .client()
         .issues(client.owner(), client.repo())
@@ -52,8 +45,7 @@ pub async fn create_issue(
         .body(body)
         .labels(labels)
         .send()
-        .await
-        .map_err(|e| GitHubError::CreateIssue { source: e })?;
+        .await?;
 
     println!("Created GitHub issue #{}: {}", issue.number, issue.title);
 
@@ -130,7 +122,7 @@ pub async fn add_comment_to_issue(
     client: &GitHubClient,
     issue_number: u64,
     comment: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     client
         .client()
         .issues(client.owner(), client.repo())
