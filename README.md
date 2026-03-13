@@ -4,6 +4,18 @@
 
 LogSnuffer is an autonomous log monitoring system that uses AI to analyze error patterns, assess severity, and automatically create GitHub issues with historical context. It combines real-time log aggregation with LLM-powered analysis to reduce manual incident response time.
 
+Will be adding / swapping some of the additional pieces for additional llm tool calls, along with an llm managed state to pass through the lifecycle
+
+### Checklist
+
+[ ] Add in an agent Context
+[ ] Add an agent state
+[ ] Add in Critical error tool
+[ ] Add warning tool
+[ ] Add final output tool
+[ ] Add Log gathering tool
+[ ] add /metrics endpoint and logging properly
+
 ---
 
 ## Personal Note

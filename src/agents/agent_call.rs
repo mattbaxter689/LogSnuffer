@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use async_rusqlite::Connection;
 use redis::AsyncCommands;
 use redis::aio::ConnectionManager;
@@ -12,7 +14,10 @@ use crate::github::issues::{
 };
 use crate::github::similarity::find_similar_issues;
 use crate::log_generator::log_methods::LogEntry;
-use crate::ticket_tool::ticket::{AnalysisArgs, AnalysisTool, CriticalError, ToolCallResponse};
+use crate::ticket_tool::agent_state::AgentState;
+use crate::ticket_tool::analysis_tool::{
+    AnalysisArgs, AnalysisTool, CriticalError, ToolCallResponse,
+};
 
 pub async fn run_dev_agent(
     summarized_logs: Vec<(LogEntry, usize)>,
@@ -41,11 +46,16 @@ pub async fn run_dev_agent(
         }
     };
 
+    // Initialize the agent state
+    let state = Arc::new(Mutex::new(AgentState {
+        closed_issues,
+        ..Default::default()
+    }));
+
     let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
     let agent = client
         .agent("qwen-agent:latest")
-        .preamble(&format!(
-            "You are an expert SRE analyzing production error logs. \n\n\
+        .preamble("You are an expert SRE analyzing production error logs. \n\n\
             Your job is to:\n\
             1. Identify which errors are critical enough to warrant GitHub issues\n\
             2. Identify which errors should just be monitored as warnings\n\
@@ -53,13 +63,15 @@ pub async fn run_dev_agent(
             4. Consider error frequency and severity\n\n\
             When calling the tool, provide ONLY the raw argument values.
             Do NOT include JSON schema fields like 'type' or 'items'.
-            Context: We have {} historical closed issues that may be related.\n\n\
             Guidelines:\n\
             - Create issues for: repeated failures, service outages, data loss risks\n\
             - Just warn for: transient errors, low-frequency issues, expected degradation\n\
-            - Severity: critical (service down), high (partial outage), medium (degraded performance)",
-            closed_issues.len()
-        ))
+            - Severity: critical (service down), high (partial outage), medium (degraded performance) \n\n
+            Workflow: \n
+            1. Run AnalysisTool
+            2. Process Critical errors
+            3. Store warnings",
+        )
         .tool(AnalysisTool)
         .build();
 
@@ -78,47 +90,47 @@ pub async fn run_dev_agent(
             let cleaned = clean_llm_json(&response);
 
             // Parse the agent's analysis
-            match serde_json::from_str::<ToolCallResponse>(cleaned) {
-                Ok(tool_call) => {
-                    let analysis: AnalysisArgs = tool_call.arguments;
-                    println!("Analysis Summary: {}", analysis.summary);
-
-                    // Process critical errors
-                    for error in analysis.critical_errors {
-                        if error.should_create_issue
-                            && let Err(e) = process_critical_error(
-                                error,
-                                &github_client,
-                                db_conn.clone(),
-                                &closed_issues,
-                            )
-                            .await
-                        {
-                            eprintln!("Failed to process critical error: {}", e);
-                        }
-                    }
-
-                    // Store warnings in database
-                    for warning in analysis.warnings {
-                        if let Err(e) = store_warning(
-                            db_conn.clone(),
-                            warning.error_pattern.clone(),
-                            "warning".to_string(),
-                            warning.description.clone(),
-                        )
-                        .await
-                        {
-                            eprintln!("Failed to store warning: {}", e);
-                        }
-                    }
-                }
-                Err(e) => {
-                    eprintln!(
-                        "Failed to parse AnalysisArgs: {}\nResponse was:\n{}",
-                        e, response
-                    );
-                }
-            }
+            // match serde_json::from_str::<ToolCallResponse>(cleaned) {
+            //     Ok(tool_call) => {
+            //         let analysis: AnalysisArgs = tool_call.arguments;
+            //         println!("Analysis Summary: {}", analysis.summary);
+            //
+            //         // Process critical errors
+            //         for error in analysis.critical_errors {
+            //             if error.should_create_issue
+            //                 && let Err(e) = process_critical_error(
+            //                     error,
+            //                     &github_client,
+            //                     db_conn.clone(),
+            //                     &closed_issues,
+            //                 )
+            //                 .await
+            //             {
+            //                 eprintln!("Failed to process critical error: {}", e);
+            //             }
+            //         }
+            //
+            //         // Store warnings in database
+            //         for warning in analysis.warnings {
+            //             if let Err(e) = store_warning(
+            //                 db_conn.clone(),
+            //                 warning.error_pattern.clone(),
+            //                 "warning".to_string(),
+            //                 warning.description.clone(),
+            //             )
+            //             .await
+            //             {
+            //                 eprintln!("Failed to store warning: {}", e);
+            //             }
+            //         }
+            //     }
+            //     Err(e) => {
+            //         eprintln!(
+            //             "Failed to parse AnalysisArgs: {}\nResponse was:\n{}",
+            //             e, response
+            //         );
+            //     }
+            // }
         }
         Err(e) => {
             eprintln!("Agent error: {}", e);
@@ -369,7 +381,7 @@ async fn process_critical_error(
             for (issue_num, score) in &other_open {
                 let issue = all_issues.iter().find(|i| i.number == *issue_num).unwrap();
                 body.push_str(&format!(
-                    "- 🔴 #{} - {} (similarity: {:.0}%)\n",
+                    "#{} - {} (similarity: {:.0}%)\n",
                     issue_num,
                     issue.title,
                     score * 100.0
