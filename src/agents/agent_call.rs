@@ -14,6 +14,7 @@ use crate::github::issues::{
 };
 use crate::github::similarity::find_similar_issues;
 use crate::log_generator::log_methods::LogEntry;
+use crate::state::agent_context::AgentContext;
 use crate::state::agent_state::AgentState;
 use crate::ticket_tool::analysis_tool::{
     AnalysisArgs, AnalysisTool, CriticalError, ToolCallResponse,
@@ -46,11 +47,17 @@ pub async fn run_dev_agent(
         }
     };
 
-    // Initialize the agent state
+    // Initialize the agent state and context
     let state = Arc::new(Mutex::new(AgentState {
         closed_issues,
         ..Default::default()
     }));
+
+    let context = Arc::new(AgentContext {
+        github: github_client,
+        db: db_conn,
+        redis: redis_conn.clone(),
+    });
 
     let client: ollama::Client = ollama::Client::new(Nothing).unwrap();
     let agent = client
@@ -68,9 +75,9 @@ pub async fn run_dev_agent(
             - Just warn for: transient errors, low-frequency issues, expected degradation\n\
             - Severity: critical (service down), high (partial outage), medium (degraded performance) \n\n
             Workflow: \n
-            1. Run AnalysisTool
-            2. Process Critical errors
-            3. Store warnings",
+            1. Run Analysis Tool\n\
+            2. Process Critical errors\n\
+            3. Store warnings\n",
         )
         .tool(AnalysisTool)
         .build();
