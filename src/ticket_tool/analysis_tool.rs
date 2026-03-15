@@ -126,23 +126,6 @@ impl Tool for AnalysisTool {
         println!("   Critical Errors: {}", args.critical_errors.len());
         println!("   Warnings: {}", args.warnings.len());
 
-        for error in &args.critical_errors {
-            println!(
-                " {} ({}): {}",
-                error.error_pattern,
-                error.severity,
-                if error.should_create_issue {
-                    "CREATING ISSUE"
-                } else {
-                    "NO ISSUE"
-                }
-            );
-        }
-
-        for warning in &args.warnings {
-            println!(" {}: {}", warning.error_pattern, warning.description);
-        }
-
         let json = serde_json::to_string(&args).context(SerializationSnafu)?;
 
         Ok(json)
