@@ -6,6 +6,7 @@ mod log_generator;
 mod planner;
 mod redis_metrics;
 mod server;
+mod state;
 mod ticket_tool;
 
 use axum::{

@@ -14,7 +14,7 @@ use crate::github::issues::{
 };
 use crate::github::similarity::find_similar_issues;
 use crate::log_generator::log_methods::LogEntry;
-use crate::ticket_tool::agent_state::AgentState;
+use crate::state::agent_state::AgentState;
 use crate::ticket_tool::analysis_tool::{
     AnalysisArgs, AnalysisTool, CriticalError, ToolCallResponse,
 };

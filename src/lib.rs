@@ -6,4 +6,5 @@ pub mod log_generator;
 pub mod planner;
 pub mod redis_metrics;
 pub mod server;
+pub mod state;
 pub mod ticket_tool;
