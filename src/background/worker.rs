@@ -19,12 +19,13 @@ pub async fn confidence_worker(state: Arc<AppState>) {
 
         // Compute confidence
         let confidence = metrics.compute_confidence().await;
-        println!("Confidence: {:.3}", confidence);
 
         // Check planner action
         match planner(&confidence) {
             PlannerAction::TicketCreation(val) => {
-                if !metrics.is_agent_running().await {
+                let running = metrics.is_agent_running().await;
+                println!("Agent running key exists? {}", running);
+                if !running {
                     metrics.set_agent_running(600).await;
 
                     // Fetch summarized errors
