@@ -4,7 +4,7 @@ pub enum PlannerAction {
 }
 
 pub fn planner(confidence: &f64) -> PlannerAction {
-    if *confidence > 0.8 {
+    if *confidence > 0.65 {
         PlannerAction::TicketCreation(*confidence)
     } else {
         PlannerAction::Wait
