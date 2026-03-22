@@ -1,7 +1,11 @@
 use rig::{completion::ToolDefinition, tool::Tool};
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snafu::Snafu;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+use crate::database::init_db::store_warning;
+use crate::state::{agent_context::AgentContext, agent_state::AgentState, agent_state::EmptyArgs};
 
 #[derive(Debug, Snafu)]
 pub enum ToolError {
@@ -9,14 +13,16 @@ pub enum ToolError {
     Failed,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct CriticalErrorTool;
+pub struct WarningTool {
+    pub ctx: Arc<AgentContext>,
+    pub state: Arc<Mutex<AgentState>>,
+}
 
-impl Tool for CriticalErrorTool {
-    const NAME: &'static str = "error_processor";
+impl Tool for WarningTool {
+    const NAME: &'static str = "warning_processor";
 
     type Error = ToolError;
-    type Args = ();
+    type Args = EmptyArgs;
     type Output = ();
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
@@ -31,7 +37,37 @@ impl Tool for CriticalErrorTool {
         }
     }
 
-    async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        return Ok(());
+    // args in this case is not needed here. We do not reference them in this instance
+    async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let mut state = self.state.lock().await;
+
+        let analysis = match &state.analysis {
+            Some(a) => a,
+            None => return Ok(()),
+        };
+
+        if analysis.warnings.is_empty() {
+            println!("Warnings are empty.");
+            state.warnings_processed = true;
+            return Ok(());
+        }
+
+        for warning in analysis.warnings.clone() {
+            if let Err(e) = store_warning(
+                self.ctx.db.clone(),
+                warning.error_pattern.clone(),
+                "warning".to_string(),
+                warning.description.clone(),
+            )
+            .await
+            {
+                eprintln!("Failed to store warning: {}", e);
+            }
+            state.processed_warnings.push(warning);
+        }
+
+        state.warnings_processed = true;
+
+        Ok(())
     }
 }
