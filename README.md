@@ -8,8 +8,8 @@ Will be adding / swapping some of the additional pieces for additional llm tool 
 
 ### Checklist
 
-[ ] add /metrics endpoint for prometheus
-[ ] add in logging
+- [ ] add /metrics endpoint for prometheus
+- [ ] add in logging
 
 ---
 
