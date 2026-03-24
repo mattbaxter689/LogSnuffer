@@ -9,11 +9,11 @@ down:
   docker compose down
 
 # Set environment variables and run the server
-server:
+server-local:
   cargo run --bin server
 
 # Start the generator service
-generate:
+generate-local:
   cargo run --bin generator
 
 # deploy the API using helm charts

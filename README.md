@@ -8,23 +8,22 @@ Will be adding / swapping some of the additional pieces for additional llm tool 
 
 ### Checklist
 
-[ ] Add in an agent Context
-[ ] Add an agent state
-[ ] Add in Critical error tool
-[ ] Add warning tool
-[ ] Add final output tool
-[ ] Add Log gathering tool
-[ ] add /metrics endpoint and logging properly
+[ ] add /metrics endpoint for prometheus
+[ ] add in logging
 
 ---
 
 ## Personal Note
 
-While this is not an agentic system, this is an AI augmented log analyzer tool. The bones for this project are in place, and I can turn this into an agentic system with just some small schema changes. This is definitely something that I will be exploring. Additionally, many of the issues I faced with this are related to SQLite databases due to the file system needing manipulation across the pods, containers, etc. This caused the bigest pain point, but I wanted a simple database for this project. Also, Kafka could be used instead of Redis, but again, I wanted a project I can start with minimal setup. This is also why you will see the docker setup, along with the helm charts. I wanted to get experience with helm charts since they are used professionally, and while I don't create them day to day, I wanted to understand how they work in systems like this.
-
 As noted toward the end of this file, there are examples of how the project can be updated/upgraded. I want to highlight that I want to implement the prometheus metrics, as well as the rate limiting. These are something that are critical regardless of the system, and I think that they are very important to add to systems like this, which will have a very high throughput.
 
-I am satisfied with where this project is, but I want to take it further to be a true agentic system, that can handle production-like operations. The next steps for me will be to implement the actual agentic system, create the metrics for prometheus, as well as the rate limiting or authentication
+This project started as a simple example, but quickly grew into something that I wanted to iterate on and improve. While this is something that could be used for production systems, there are obviously costs that are associated
+with something like this, especially when calling the LLM every time there are issues. Now, this is also the result of me creating a log generator that pushes error like crazy, but still. There should also be protections in
+place to reduce the potential cost of LLM calls, perhaps LLM call limits in a time frame, batching of logs rather than the time binning methodology, etc. If this were a true production agent,
+these would have to be considered to reduce the potential ballooning cost of the application.
+
+Finally, is this project rough around the edges? I think the answer is yes. Obviously there are some things that I thing should change in terms of readability, or just development overall,
+but this project also became much larger than I had originally anticipated. I think for a first go, this is something to be proud of
 
 ---
 
@@ -122,7 +121,7 @@ This can and should be a longer window. I decided on 30 seconds to allow for the
 - Pod spread distribution
 - Time-weighted decay
 
-**LLM Agent**: Uses Ollama (Qwen model) to:
+**LLM Agent**: Uses Gemini (Gemini Pro 2.5)
 
 - Analyze error patterns with context
 - Classify severity (critical/high/medium)
@@ -147,7 +146,8 @@ This can and should be a longer window. I decided on 30 seconds to allow for the
 
 - Rust 1.75+
 - Redis 7+
-- Ollama with available model. I pulled a qwen coder model with increased context
+- Gemini API key available. Started with Qwen2.5:1b, but small models are just not enough
+for what I wanted to do
 - GitHub Personal Access Token (repo scope or issues: read/write)
 
 ### Setup
@@ -169,7 +169,8 @@ Create `.env` file:
 GITHUB_TOKEN=ghp_your_github_token
 GITHUB_OWNER=your-username
 GITHUB_REPO=your-repo-name
-REDISU_URL=your-redis-url
+REDIS_URL=your-redis-url
+GEMINI_API_KEY=your-api-key
 ```
 
 Depending on the redis instance used, you will need to configure the URL to make sure you are able to access the instance. Additionally, this project makes use of Helm charts. You will need to create a `secrets.yaml` or something similar, that contains the same environment variables found in the `.env` file.
@@ -181,10 +182,10 @@ Depending on the redis instance used, you will need to configure the URL to make
 ### Start Services
 
 ```bash
-# with docker
+# with a docker deployment
 just service
 
-# with helm
+# with helm deployment
 helm repo add bitnami <https://charts.bitnami.com/bitnami>
 helm install redis bitnami/redis
 just helm
@@ -204,7 +205,7 @@ Logs are sent to `/api/logs` and:
 
 - Stored in Redis buckets (1 bucket per second)
 - Written to SQLite asynchronously
-- Aggregated by error pattern and pod
+- Aggregated by error pattern
 
 ### 2. Confidence Computation
 
@@ -222,6 +223,7 @@ Every second, the system:
 When confidence exceeds threshold (configurable via planner):
 
 - Agent fetches last 15 error patterns with occurrence counts
+- Agent optionally decides is it wants a longer error or log pattern
 - Agent analyzes patterns using LLM
 - Agent decides which errors need GitHub issues vs. warnings
 
@@ -271,14 +273,6 @@ The system prevents duplicate issues through:
 - **Web Dashboard**: Real-time visualization of confidence trends and active incidents
 - **Multi-Tenancy**: Support multiple teams/projects with isolated data
 - **Advanced Similarity**: Use embeddings instead of keyword-based matching
-- **Custom Alert Rules**: User-defined conditions for issue creation
-
-### Low Priority
-
-- **Slack/Discord Notifications**: Alert channels when critical issues are created
-- **Distributed Tracing Integration**: Link errors to traces automatically
-- **Anomaly Detection**: ML-based detection beyond rule-based confidence
-- **Issue Templates**: Customizable GitHub issue formats per error type
 
 ---
 
@@ -288,302 +282,3 @@ The system prevents duplicate issues through:
 - **LLM Latency**: Agent analysis takes 5-30 seconds; not suitable for sub-second SLAs
 - **Memory Usage**: Redis stores 30 seconds of logs in memory; adjust window size for high-volume systems
 - **Single Instance**: Current design assumes one server instance; scaling requires Redis coordination
-
-### Components
-
-**API Server (Axum)**: Receives log batches via HTTP POST and serves metrics endpoints
-
-**Background Worker**: Runs every second to rotate time buckets, compute confidence scores, and trigger agent analysis when thresholds are met
-
-**Redis Metrics Engine**: Maintains a 30-second rolling window of log data with:
-
-- Total log counts per bucket
-- Error log counts per bucket
-- Unique pod instances
-- Message pattern hashing
-
-**Confidence Calculation**: Multi-factor scoring based on:
-
-- Error rate spike detection (short-term vs. baseline)
-- Dominant message pattern frequency
-- Pod spread distribution
-- Time-weighted decay
-
-**LLM Agent**: Uses Ollama (Qwen model) to:
-
-- Analyze error patterns with context
-- Classify severity (critical/high/medium)
-- Decide which errors warrant GitHub issues vs. warnings
-- Suggest investigation steps
-
-**GitHub Integration**:
-
-- Creates issues with detailed context
-- Links to similar historical issues
-- Prevents duplicate issue creation (>70% similarity)
-- Detects regressions (similar to recently closed issues)
-- Adds comments to existing issues when duplicates detected
-
-**SQLite Database**: Stores logs, GitHub issue metadata, and warnings for historical analysis
-
----
-
-## Installation
-
-### Prerequisites
-
-- Rust 1.75+
-- Redis 7+
-- Ollama with `qwen-agent:latest` model
-- GitHub Personal Access Token (repo scope or issues: read/write)
-
-### Setup
-
-```bash
-# Clone repository
-git clone https://github.com/yourusername/logsnuffer.git
-cd logsnuffer
-
-# Install Ollama model
-ollama pull qwen-agent:latest
-
-# Build project
-cargo build --release
-```
-
-### Configuration
-
-Create `.env` file:
-
-```bash
-GITHUB_TOKEN=ghp_your_github_token
-GITHUB_OWNER=your-username
-GITHUB_REPO=your-repo-name
-```
-
----
-
-## Usage
-
-### Start Services
-
-```bash
-# Terminal 1: Start Redis
-redis-server
-
-# Terminal 2: Start Ollama
-ollama serve
-
-# Terminal 3: Start LogSnuffer server
-export $(cat .env | xargs)
-cargo run --release --bin server
-
-# Terminal 4: (Optional) Start test log generator
-cargo run --release --bin generator
-```
-
-### API Endpoints
-
-**Ingest Logs**
-
-```bash
-POST /api/logs
-Content-Type: application/json
-
-{
-  "logs": [
-    {
-      "service": "checkout",
-      "message": "db_connection_timeout",
-      "level": "ERROR",
-      "instance": "pod-1",
-      "timestamp": 1738234567
-    }
-  ]
-}
-```
-
-**Get Confidence Score**
-
-```bash
-GET /api/confidence
-
-{
-  "confidence": 0.785,
-  "message": "Current confidence: 0.785"
-}
-```
-
-**GitHub Webhook**
-
-```bash
-POST /webhooks/github
-# Automatically receives GitHub issue state changes
-```
-
----
-
-## How It Works
-
-### 1. Log Ingestion
-
-Logs are sent to `/api/logs` and:
-
-- Stored in Redis buckets (1 bucket per second)
-- Written to SQLite asynchronously
-- Aggregated by error pattern and pod
-
-### 2. Confidence Computation
-
-Every second, the system:
-
-- Rotates to a new time bucket
-- Compares recent error rates (last 3 seconds) to baseline (last 27 seconds)
-- Computes a confidence score (0.0 to 1.0) based on:
-  - Error rate spike ratio
-  - Dominant message pattern frequency
-  - Number of affected pods
-
-### 3. Agent Trigger
-
-When confidence exceeds threshold (configurable via planner):
-
-- Agent fetches last 15 error patterns with occurrence counts
-- Agent analyzes patterns using LLM
-- Agent decides which errors need GitHub issues vs. warnings
-
-### 4. Issue Creation
-
-For each critical error:
-
-- Checks for duplicate open issues (>70% similarity)
-  - If found: Adds comment to existing issue instead
-- Checks for recently closed issues (>60% similarity, <7 days)
-  - If found: Marks new issue as regression
-- Creates GitHub issue with:
-  - Error description and suggested fix
-  - Links to top 3 related closed issues
-  - Automatic labels (severity, automated, regression)
-
-### 5. Issue Tracking
-
-- GitHub webhook updates database when issues are closed
-- Closed issues become searchable for future similarity matching
-- System learns from historical resolutions
-
----
-
-## Confidence Scoring Algorithm
-
-```rust
-// Simplified pseudocode
-let short_rate = errors_last_3s / logs_last_3s;
-let long_rate = errors_last_27s / logs_last_27s;
-
-let error_signal = (short_rate / long_rate) / 10.0;  // Spike detection
-let dominant_msg_ratio = max_message_count / total_logs;
-let pod_spread = unique_pods / total_pods;
-
-let score = 
-    (error_signal * 0.5) +       // 50% weight: error spike
-    (dominant_msg_ratio * 0.4) + // 40% weight: message dominance
-    (pod_spread * 0.1);          // 10% weight: pod distribution
-
-// Apply exponential smoothing
-confidence = (score * 0.8) + (prev_confidence * 0.2);
-```
-
----
-
-## Database Schema
-
-**Logs Table**
-
-```sql
-CREATE TABLE logs (
-    id INTEGER PRIMARY KEY,
-    service TEXT,
-    message TEXT,
-    level TEXT,
-    instance TEXT,
-    timestamp INTEGER
-);
-```
-
-**GitHub Issues Table**
-
-```sql
-CREATE TABLE github_issues (
-    id INTEGER PRIMARY KEY,
-    issue_number INTEGER UNIQUE,
-    title TEXT,
-    body TEXT,
-    error_pattern TEXT,
-    state TEXT,
-    created_at INTEGER,
-    closed_at INTEGER,
-    related_issues TEXT  -- JSON array
-);
-```
-
-**Warnings Table**
-
-```sql
-CREATE TABLE warnings (
-    id INTEGER PRIMARY KEY,
-    error_pattern TEXT,
-    severity TEXT,
-    description TEXT,
-    first_seen INTEGER,
-    last_seen INTEGER,
-    occurrence_count INTEGER,
-    status TEXT
-);
-```
-
----
-
-## Duplicate Prevention
-
-The system prevents duplicate issues through:
-
-1. **Similarity Matching**: Calculates Jaccard similarity on error patterns and issue titles
-2. **Open Issue Check**: If >70% similar to an open issue, adds a comment instead
-3. **Regression Detection**: If >60% similar to issue closed within 7 days, creates new issue with regression label
-4. **Bidirectional Linking**: References top 3 closed issues and adds backlink comments
-
----
-
-## Future Improvements
-
-### High Priority
-
-- **PostgreSQL Support**: Replace SQLite for better concurrency handling
-- **Configurable Thresholds**: Move hardcoded values (similarity thresholds, time windows) to configuration file
-- **Rate Limiting**: Prevent API abuse and LLM overuse
-- **Prometheus Metrics**: Export confidence scores and error rates for monitoring
-
-### Medium Priority
-
-- **Web Dashboard**: Real-time visualization of confidence trends and active incidents
-- **Multi-Tenancy**: Support multiple teams/projects with isolated data
-- **Advanced Similarity**: Use embeddings instead of keyword-based matching
-- **Custom Alert Rules**: User-defined conditions for issue creation
-
-### Low Priority
-
-- **Slack/Discord Notifications**: Alert channels when critical issues are created
-- **Distributed Tracing Integration**: Link errors to traces automatically
-- **Anomaly Detection**: ML-based detection beyond rule-based confidence
-- **Issue Templates**: Customizable GitHub issue formats per error type
-
----
-
-## Limitations
-
-- **SQLite Concurrency**: High log volumes may cause database locking; consider PostgreSQL
-- **LLM Latency**: Agent analysis takes 5-30 seconds; not suitable for sub-second SLAs
-- **Memory Usage**: Redis stores 30 seconds of logs in memory; adjust window size for high-volume systems
-- **Single Instance**: Current design assumes one server instance; scaling requires Redis coordination
-
----
