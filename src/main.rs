@@ -6,6 +6,7 @@ mod log_generator;
 mod planner;
 mod redis_metrics;
 mod server;
+mod state;
 mod ticket_tool;
 
 use axum::{
@@ -40,7 +41,6 @@ async fn main() {
             .expect("REDIS_URL environment variable is missing. Must be set"),
         30,
         0.7,
-        5,
     )
     .await;
     println!("Connected to Redis");
@@ -58,7 +58,7 @@ async fn main() {
 
     let state = Arc::new(AppState {
         db,
-        metrics: Mutex::new(metrics),
+        metrics: Arc::new(Mutex::new(metrics)),
         github,
     });
 

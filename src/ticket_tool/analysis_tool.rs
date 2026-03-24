@@ -1,7 +1,12 @@
+use std::sync::Arc;
+
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snafu::{ResultExt, Snafu};
+use snafu::Snafu;
+use tokio::sync::Mutex;
+
+use crate::state::agent_state::AgentState;
 
 #[derive(Debug, Snafu)]
 pub enum AnalysisToolError {
@@ -33,22 +38,16 @@ pub struct Warning {
     pub monitoring_recommendation: String,
 }
 
-// Helper struct to parse the tool call response
-#[derive(Deserialize, Debug)]
-pub struct ToolCallResponse {
-    pub name: String,
-    pub arguments: AnalysisArgs,
+pub struct AnalysisTool {
+    pub state: Arc<Mutex<AgentState>>,
 }
-
-#[derive(Serialize, Deserialize)]
-pub struct AnalysisTool;
 
 impl Tool for AnalysisTool {
     const NAME: &'static str = "submit_analysis";
 
     type Error = AnalysisToolError;
     type Args = AnalysisArgs;
-    type Output = String;
+    type Output = ();
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
@@ -126,25 +125,12 @@ impl Tool for AnalysisTool {
         println!("   Critical Errors: {}", args.critical_errors.len());
         println!("   Warnings: {}", args.warnings.len());
 
-        for error in &args.critical_errors {
-            println!(
-                " {} ({}): {}",
-                error.error_pattern,
-                error.severity,
-                if error.should_create_issue {
-                    "CREATING ISSUE"
-                } else {
-                    "NO ISSUE"
-                }
-            );
-        }
+        let mut state = self.state.lock().await;
 
-        for warning in &args.warnings {
-            println!(" {}: {}", warning.error_pattern, warning.description);
-        }
+        state.analysis = Some(args);
 
-        let json = serde_json::to_string(&args).context(SerializationSnafu)?;
+        println!("Analysis run and stored in state");
 
-        Ok(json)
+        Ok(())
     }
 }

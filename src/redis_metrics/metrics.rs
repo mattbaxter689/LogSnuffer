@@ -3,22 +3,24 @@ use redis::AsyncCommands;
 use redis::aio::ConnectionManager;
 use std::collections::{HashMap, HashSet};
 
+pub struct ConfidenceReport {
+    pub score: f64,
+    pub short_rate: f64,
+    pub long_rate: f64,
+    pub recent_pod_count: usize,
+    pub total_pod_count: usize,
+}
+
 pub struct RedisMetrics {
     pub conn: ConnectionManager,
     pub window_size: usize,
     pub current_bucket: usize,
     pub decay_factor: f64,
-    pub pods_len: usize,
     pub prev_confidence: f64,
 }
 
 impl RedisMetrics {
-    pub async fn new(
-        redis_url: &str,
-        window_size: usize,
-        decay_factor: f64,
-        pods_len: usize,
-    ) -> Self {
+    pub async fn new(redis_url: &str, window_size: usize, decay_factor: f64) -> Self {
         let client = redis::Client::open(redis_url).expect("Error connecting to Redis Client");
         let conn = ConnectionManager::new(client)
             .await
@@ -28,7 +30,6 @@ impl RedisMetrics {
             conn,
             window_size,
             decay_factor,
-            pods_len,
             current_bucket: 0,
             prev_confidence: 0.0,
         }
@@ -70,22 +71,26 @@ impl RedisMetrics {
         let _: Result<(), _> = self.conn.del(format!("{}:logs", bucket_key)).await;
     }
 
-    pub async fn compute_confidence(&mut self) -> f64 {
-        let short_size = 3;
+    pub async fn compute_confidence(&mut self) -> ConfidenceReport {
+        // short_size is a fraction of the window rather than a hardcoded 3
+        // e.g. window=60 → short_size=15 (last quarter of the window)
+        let short_size = (self.window_size / 4).max(1);
 
         let mut short_total = 0.0;
         let mut short_errors = 0.0;
         let mut long_total = 0.0;
         let mut long_errors = 0.0;
-        let mut unique_pods: HashSet<String> = HashSet::new();
+
+        // Track pods per bucket so we can derive a dynamic fleet size
+        let mut pods_per_bucket: Vec<HashSet<String>> = Vec::new();
+        let mut all_pods_in_window: HashSet<String> = HashSet::new();
+        let mut recent_pods: HashSet<String> = HashSet::new();
         let mut message_counts: HashMap<u64, f64> = HashMap::new();
 
         for i in 0..self.window_size {
             let bucket_key = format!("bucket:{}", i);
 
-            //.await then .unwrap_or
             let logs: u32 = self.conn.hget(&bucket_key, "total_logs").await.unwrap_or(0);
-
             let errors: u32 = self.conn.hget(&bucket_key, "error_logs").await.unwrap_or(0);
 
             let offset = if i <= self.current_bucket {
@@ -105,18 +110,26 @@ impl RedisMetrics {
                 long_errors += errors as f64 * age_weight;
             }
 
-            //.await then .unwrap_or_default
             let pods: Vec<String> = self
                 .conn
                 .smembers(format!("{}:pods", bucket_key))
                 .await
                 .unwrap_or_default();
 
-            for pod in pods {
-                unique_pods.insert(pod);
+            let bucket_pods: HashSet<String> = pods.into_iter().collect();
+
+            // Track which pods appeared recently vs across the full window
+            if is_recent {
+                for pod in &bucket_pods {
+                    recent_pods.insert(pod.clone());
+                }
+            }
+            for pod in &bucket_pods {
+                all_pods_in_window.insert(pod.clone());
             }
 
-            //.await then .unwrap_or_default
+            pods_per_bucket.push(bucket_pods);
+
             let msgs: HashMap<u64, u32> = self
                 .conn
                 .hgetall(format!("{}:messages", bucket_key))
@@ -129,7 +142,13 @@ impl RedisMetrics {
         }
 
         if short_total < 0.1 {
-            return self.prev_confidence * 0.5;
+            return ConfidenceReport {
+                score: self.prev_confidence,
+                short_rate: short_errors / short_total,
+                long_rate: long_errors / long_total,
+                recent_pod_count: recent_pods.len(),
+                total_pod_count: all_pods_in_window.len(),
+            };
         }
 
         let short_rate = short_errors / short_total;
@@ -149,15 +168,18 @@ impl RedisMetrics {
             0.0
         };
 
-        let weight_error = 0.50;
-        let weight_msg = 0.40;
-        let weight_pods = 0.10;
-
-        let pod_spread = if self.pods_len > 0 {
-            (unique_pods.len() as f64 / self.pods_len as f64).min(1.0)
+        // Pod spread: what fraction of the known fleet is currently erroring?
+        // all_pods_in_window is our dynamic fleet size baseline —
+        // no hardcoded pods_len needed
+        let pod_spread = if !all_pods_in_window.is_empty() {
+            (recent_pods.len() as f64 / all_pods_in_window.len() as f64).min(1.0)
         } else {
             0.0
         };
+
+        let weight_error = 0.50;
+        let weight_msg = 0.40;
+        let weight_pods = 0.10;
 
         let mut score = (error_signal * weight_error)
             + (dom_msg_ratio * weight_msg)
@@ -172,25 +194,16 @@ impl RedisMetrics {
         } else {
             0.3
         };
-
         let final_val = (score * alpha) + (self.prev_confidence * (1.0 - alpha));
-
         self.prev_confidence = final_val.clamp(0.0, 1.0);
 
-        // println!(
-        //     "Debug: short={:.0}/{:.0} ({:.2}%), long={:.0}/{:.0} ({:.2}%), ratio={:.2}, dom_msg={:.2}, score={:.3}",
-        //     short_errors,
-        //     short_total,
-        //     short_rate * 100.0,
-        //     long_errors,
-        //     long_total,
-        //     long_rate * 100.0,
-        //     ratio,
-        //     dom_msg_ratio,
-        //     final_val
-        // );
-        //
-        self.prev_confidence
+        ConfidenceReport {
+            score: self.prev_confidence,
+            short_rate,
+            long_rate,
+            recent_pod_count: recent_pods.len(),
+            total_pod_count: all_pods_in_window.len(),
+        }
     }
 
     pub async fn fetch_recent_logs(&mut self, limit: usize) -> Vec<LogEntry> {
@@ -233,35 +246,8 @@ impl RedisMetrics {
             .take(limit)
             .collect()
     }
-    pub async fn fetch_logs_from_window(&mut self, seconds: usize) -> Vec<LogEntry> {
-        let buckets_to_check = seconds.min(self.window_size);
-        let mut logs = Vec::new();
 
-        for i in 0..buckets_to_check {
-            let bucket_idx = if self.current_bucket >= i {
-                self.current_bucket - i
-            } else {
-                self.window_size + self.current_bucket - i
-            };
-
-            let logs_key = format!("bucket:{}:logs", bucket_idx);
-
-            //.await then .unwrap_or_default
-            let logs_json: Vec<String> =
-                self.conn.lrange(&logs_key, 0, -1).await.unwrap_or_default();
-
-            for log_str in logs_json {
-                if let Ok(log) = serde_json::from_str::<LogEntry>(&log_str) {
-                    logs.push(log);
-                }
-            }
-        }
-
-        logs.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-        logs
-    }
-
-    pub async fn fetch_summarized_errors(&mut self, limit: usize) -> Vec<(LogEntry, usize)> {
+    pub async fn metricsfetch_summarized_errors(&mut self, limit: usize) -> Vec<(LogEntry, usize)> {
         // Fetch more errors than we need to get good aggregation
         let errors = self.fetch_recent_errors(limit * 3).await;
 
@@ -294,9 +280,5 @@ impl RedisMetrics {
 
     pub async fn set_agent_running(&mut self, ttl_seconds: u64) {
         let _: Result<(), _> = self.conn.set_ex("agent:running", 1, ttl_seconds).await;
-    }
-
-    pub async fn clear_agent_running(&mut self) {
-        let _: Result<(), _> = self.conn.del("agent:running").await;
     }
 }
