@@ -10,18 +10,21 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 
 use crate::github::client::GitHubClient;
-use crate::github::issues::fetch_closed_issues;
+use crate::github::issues::{IssueMetadata, fetch_closed_issues};
 use crate::log_generator::log_methods::LogEntry;
+use crate::redis_metrics::metrics::{ConfidenceReport, RedisMetrics};
 use crate::state::agent_context::AgentContext;
 use crate::state::agent_state::{AgentState, EmptyArgs};
 use crate::ticket_tool::analysis_tool::AnalysisTool;
 use crate::ticket_tool::error_tool::CriticalErrorTool;
+use crate::ticket_tool::fetchlogs_tool::FetchLogsTool;
 use crate::ticket_tool::warning_tool::WarningTool;
 
 pub async fn run_dev_agent(
     summarized_logs: Vec<(LogEntry, usize)>,
-    confidence: f64,
+    report: ConfidenceReport,
     mut redis_conn: ConnectionManager,
+    metrics: Arc<Mutex<RedisMetrics>>,
     db_conn: Connection,
     github_client: GitHubClient,
 ) {
@@ -44,14 +47,14 @@ pub async fn run_dev_agent(
     };
 
     let state = Arc::new(Mutex::new(AgentState {
-        closed_issues,
+        closed_issues: closed_issues.clone(),
         ..Default::default()
     }));
 
     let ctx = Arc::new(AgentContext {
         github: github_client,
         db: db_conn,
-        redis: redis_conn.clone(),
+        metrics,
     });
 
     let client = gemini::Client::new(
@@ -60,29 +63,44 @@ pub async fn run_dev_agent(
     .unwrap();
 
     let context = format!(
-        "Confidence Score: {:.2}\n\nError Patterns:\n{}",
-        confidence,
-        format_summarized_logs(&summarized_logs)
+        "Confidence Score: {:.2} (>0.7 = anomalous, >0.9 = critical)
+
+        Short-window error rate: {:.1}%
+        Long-window baseline rate: {:.1}%
+        Affected pods: {}/{}
+
+        Error Patterns (with occurrence counts):
+        {}
+
+        Historical issues for reference:
+        {}",
+        report.score,
+        report.short_rate * 100.0,
+        report.long_rate * 100.0,
+        report.recent_pod_count,
+        report.total_pod_count,
+        format_summarized_logs(&summarized_logs),
+        format_closed_issues(&closed_issues),
     );
 
     let agent = client
         .agent("gemini-2.5-pro")
-        .default_max_turns(10)
+        .default_max_turns(12)
         .preamble(
             "You are an expert SRE agent analyzing production error logs.
 
             You MUST call all 4 tools in this exact order before giving a final response:
-            1. submit_analysis   - classify the logs into critical errors and warnings
-            2. error_processor   - process and create GitHub issues for critical errors
-            3. warning_processor - store warnings for monitoring
+            1. fetch_logs (optional - call as needed before analyzing) 
+            2. submit_analysis   - classify the logs into critical errors and warnings
+            3. error_processor   - process and create GitHub issues for critical errors
+            4. warning_processor - store warnings for monitoring
 
             Rules:
             - Call ONE tool per turn
             - Do NOT skip any tool
-            - Do NOT produce a text response until all 4 tools have been called
-            - After each tool returns, immediately call the next one
-            - The tool return value will tell you what to call next",
+            - After each tool returns, immediately call the next one",
         )
+        .tool(FetchLogsTool { ctx: ctx.clone() })
         .tool(AnalysisTool {
             state: state.clone(),
         })
@@ -156,21 +174,17 @@ async fn run_fallback_pipeline(ctx: &Arc<AgentContext>, state: &Arc<Mutex<AgentS
     }
 }
 
-fn clean_llm_json(response: &str) -> &str {
-    let trimmed = response.trim();
-
-    if trimmed.starts_with("```") {
-        // Remove first ``` line
-        let without_start = trimmed
-            .trim_start_matches("```json")
-            .trim_start_matches("```")
-            .trim();
-
-        // Remove trailing ```
-        without_start.trim_end_matches("```").trim()
-    } else {
-        trimmed
+fn format_closed_issues(issues: &[IssueMetadata]) -> String {
+    if issues.is_empty() {
+        return "None".to_string();
     }
+
+    issues
+        .iter()
+        .take(10) // cap it so the context doesn't blow up
+        .map(|issue| format!("- #{}: {}", issue.number, issue.title))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn format_summarized_logs(logs: &[(LogEntry, usize)]) -> String {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use rig::{completion::ToolDefinition, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use snafu::{ResultExt, Snafu};
+use snafu::Snafu;
 use tokio::sync::Mutex;
 
 use crate::state::agent_state::AgentState;

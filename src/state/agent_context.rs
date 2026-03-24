@@ -1,11 +1,12 @@
 use async_rusqlite::Connection;
-use redis::aio::ConnectionManager;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
-use crate::github::client::GitHubClient;
+use crate::{github::client::GitHubClient, redis_metrics::metrics::RedisMetrics};
 
 #[derive(Clone)]
 pub struct AgentContext {
     pub github: GitHubClient,
     pub db: Connection,
-    pub redis: ConnectionManager,
+    pub metrics: Arc<Mutex<RedisMetrics>>,
 }
