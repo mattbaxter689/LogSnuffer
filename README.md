@@ -4,12 +4,9 @@
 
 LogSnuffer is an autonomous log monitoring system that uses AI to analyze error patterns, assess severity, and automatically create GitHub issues with historical context. It combines real-time log aggregation with LLM-powered analysis to reduce manual incident response time.
 
-Will be adding / swapping some of the additional pieces for additional llm tool calls, along with an llm managed state to pass through the lifecycle
-
 ### Checklist
 
 - [ ] add /metrics endpoint for prometheus
-- [ ] add in logging
 
 ---
 
@@ -20,10 +17,10 @@ As noted toward the end of this file, there are examples of how the project can 
 This project started as a simple example, but quickly grew into something that I wanted to iterate on and improve. While this is something that could be used for production systems, there are obviously costs that are associated
 with something like this, especially when calling the LLM every time there are issues. Now, this is also the result of me creating a log generator that pushes error like crazy, but still. There should also be protections in
 place to reduce the potential cost of LLM calls, perhaps LLM call limits in a time frame, batching of logs rather than the time binning methodology, etc. If this were a true production agent,
-these would have to be considered to reduce the potential ballooning cost of the application.
+these would have to be considered to reduce the potential ballooning cost of the application. Additionally, rate limiting, and additional monitoring with some like Prometheus should be used.
 
-Finally, is this project rough around the edges? I think the answer is yes. Obviously there are some things that I thing should change in terms of readability, or just development overall,
-but this project also became much larger than I had originally anticipated. I think for a first go, this is something to be proud of
+Finally, is this project rough around the edges? Absolutely it is, yes. Obviously there are some things that I thing should change in terms of readability, or just development overall,
+but this project also became much larger than I had originally anticipated. There are definitely design changes, or structural changes I would make, but as a first attempt at an agentic Rust program, I'm happy
 
 ---
 

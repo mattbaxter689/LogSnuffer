@@ -17,6 +17,7 @@ use rustls::crypto::{CryptoProvider, ring::default_provider};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tower_http::trace::TraceLayer;
+use tracing::info;
 
 use crate::database::init_db::init_db;
 use crate::github::client::GitHubClient;
@@ -31,10 +32,10 @@ async fn main() {
 
     tracing_subscriber::fmt::init();
 
-    println!("Starting Log Analytics API...");
+    info!("Starting Log Analytics API...");
 
     let db = init_db().await;
-    println!("Database and tables initialized");
+    info!("Database and tables initialized");
 
     let metrics = RedisMetrics::new(
         &std::env::var("REDIS_URL")
@@ -43,7 +44,7 @@ async fn main() {
         0.7,
     )
     .await;
-    println!("Connected to Redis");
+    info!("Connected to Redis");
 
     let github_token =
         std::env::var("GITHUB_TOKEN").expect("GITHUB_TOKEN environment variable must be set");
@@ -54,7 +55,7 @@ async fn main() {
 
     let github = GitHubClient::new(&github_token, github_owner, github_repo)
         .expect("Failed to create GitHub client");
-    println!("GitHub client initialized");
+    info!("GitHub client initialized");
 
     // initialize an axum app state for data shared across endpoints
     let state = Arc::new(AppState {
@@ -67,7 +68,7 @@ async fn main() {
     tokio::spawn(async move {
         background::worker::confidence_worker(worker_state).await;
     });
-    println!("Started background worker");
+    info!("Started background worker");
 
     // create worker and attach endpoints to serve
     // Note the github webhook endpoint
