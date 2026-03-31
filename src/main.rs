@@ -56,6 +56,7 @@ async fn main() {
         .expect("Failed to create GitHub client");
     println!("GitHub client initialized");
 
+    // initialize an axum app state for data shared across endpoints
     let state = Arc::new(AppState {
         db,
         metrics: Arc::new(Mutex::new(metrics)),
@@ -68,6 +69,8 @@ async fn main() {
     });
     println!("Started background worker");
 
+    // create worker and attach endpoints to serve
+    // Note the github webhook endpoint
     let app: Router = Router::new()
         .route("/", get(health_check))
         .route("/health", get(health_check))

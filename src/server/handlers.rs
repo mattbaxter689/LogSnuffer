@@ -1,6 +1,7 @@
 use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tracing::error;
 
 use crate::database::init_db::store_log;
 use crate::log_generator::log_methods::LogEntry;
@@ -55,7 +56,7 @@ pub async fn ingest_logs(
         let log_clone = log.clone();
         tokio::spawn(async move {
             if let Err(e) = store_log(db, log_clone).await {
-                eprintln!("Error storing log: {}", e);
+                error!("Error storing log: {}", e);
             }
         });
     }

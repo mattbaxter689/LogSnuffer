@@ -238,7 +238,7 @@ impl RedisMetrics {
     }
 
     pub async fn fetch_recent_errors(&mut self, limit: usize) -> Vec<LogEntry> {
-        // ✅ .await the fetch_recent_logs call
+        // await the fetch_recent_logs call
         self.fetch_recent_logs(limit * 3)
             .await
             .into_iter()
@@ -247,7 +247,7 @@ impl RedisMetrics {
             .collect()
     }
 
-    pub async fn metricsfetch_summarized_errors(&mut self, limit: usize) -> Vec<(LogEntry, usize)> {
+    pub async fn fetch_summarized_errors(&mut self, limit: usize) -> Vec<(LogEntry, usize)> {
         // Fetch more errors than we need to get good aggregation
         let errors = self.fetch_recent_errors(limit * 3).await;
 

@@ -4,6 +4,7 @@ use serde_json::json;
 use snafu::Snafu;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::{error, info};
 
 use crate::database::init_db::{fetch_related_issues, store_github_issue};
 use crate::github::client::GitHubClient;
@@ -52,7 +53,7 @@ impl Tool for CriticalErrorTool {
         };
 
         if analysis.critical_errors.is_empty() {
-            println!("Errors are empty");
+            info!("Errors are empty");
             state.errors_processed = true;
             return Ok(());
         }
@@ -67,13 +68,13 @@ impl Tool for CriticalErrorTool {
                 )
                 .await
             {
-                eprint!("Failed to process crtitical error: {}", e)
+                error!("Failed to process crtitical error: {}", e)
             }
             state.processed_errors.push(error);
         }
 
         state.errors_processed = true;
-        println!("Critical errors processed");
+        info!("Critical errors processed");
 
         Ok(())
     }
@@ -85,24 +86,24 @@ async fn process_critical_error(
     db_conn: Connection,
     all_issues: &[IssueMetadata],
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    println!("Processing: {}", error.error_pattern);
-    println!("Severity: {}", error.severity);
-    println!("Description: {}", error.description);
+    info!("Processing: {}", error.error_pattern);
+    info!("Severity: {}", error.severity);
+    info!("Description: {}", error.description);
 
     // Find similar issues (both open and closed)
-    println!("Finding similar issues...");
-    println!("Error pattern: '{}'", error.error_pattern);
-    println!("Searching in {} total issues", all_issues.len());
+    info!("Finding similar issues...");
+    info!("Error pattern: '{}'", error.error_pattern);
+    info!("Searching in {} total issues", all_issues.len());
 
     let similar = find_similar_issues(&error.error_pattern, all_issues, 0.2);
-    println!("Found {} similar issues (threshold: 0.2)", similar.len());
+    info!("Found {} similar issues (threshold: 0.2)", similar.len());
 
     if !similar.is_empty() {
-        println!("      Similar issues:");
+        info!("      Similar issues:");
         for (issue_num, score) in similar.iter().take(5) {
             let issue = all_issues.iter().find(|i| i.number == *issue_num);
             if let Some(i) = issue {
-                println!(
+                info!(
                     "         - #{} ({:.0}% match, {}): {}",
                     issue_num,
                     score * 100.0,
@@ -132,14 +133,14 @@ async fn process_critical_error(
         let (dup_num, dup_score) = open_duplicates[0];
         let dup_issue = all_issues.iter().find(|i| i.number == *dup_num).unwrap();
 
-        println!("DUPLICATE DETECTED!");
-        println!(
+        info!("DUPLICATE DETECTED!");
+        info!(
             "Found very similar open issue: #{} ({:.0}% match)",
             dup_num,
             dup_score * 100.0
         );
-        println!("Existing: {}", dup_issue.title);
-        println!("Skipping issue creation - adding comment instead");
+        info!("Existing: {}", dup_issue.title);
+        info!("Skipping issue creation - adding comment instead");
 
         // Add a comment to existing issue
         let comment = format!(
@@ -162,8 +163,8 @@ async fn process_critical_error(
         );
 
         match add_comment_to_issue(github_client, *dup_num, &comment).await {
-            Ok(_) => println!("Added comment to existing issue #{}", dup_num),
-            Err(e) => eprintln!("Failed to add comment: {}", e),
+            Ok(_) => info!("Added comment to existing issue #{}", dup_num),
+            Err(e) => error!("Failed to add comment: {}", e),
         }
 
         return Ok(());
@@ -200,15 +201,15 @@ async fn process_critical_error(
         let (reg_num, reg_score) = recently_closed[0];
         let reg_issue = all_issues.iter().find(|i| i.number == *reg_num).unwrap();
 
-        println!("POSSIBLE REGRESSION!");
-        println!(
+        info!("POSSIBLE REGRESSION!");
+        info!(
             "Similar issue was closed recently: #{} ({:.0}% match)",
             reg_num,
             reg_score * 100.0
         );
-        println!("Previous: {}", reg_issue.title);
+        info!("Previous: {}", reg_issue.title);
         if let Some(closed) = reg_issue.closed_at {
-            println!(
+            info!(
                 "Closed: {} ({} days ago)",
                 closed.format("%Y-%m-%d"),
                 (chrono::Utc::now() - closed).num_days()
@@ -230,10 +231,10 @@ async fn process_critical_error(
         .cloned()
         .collect();
 
-    println!("Top {} related closed issues:", top_closed_issues.len());
+    info!("Top {} related closed issues:", top_closed_issues.len());
     for (issue_num, score) in &top_closed_issues {
         let issue = all_issues.iter().find(|i| i.number == *issue_num).unwrap();
-        println!(
+        info!(
             "#{} ({:.0}% match): {}",
             issue_num,
             score * 100.0,
@@ -242,9 +243,9 @@ async fn process_critical_error(
     }
 
     // Fetch from database too
-    println!("Fetching related issues from database...");
+    info!("Fetching related issues from database...");
     let db_related = fetch_related_issues(db_conn.clone(), error.error_pattern.clone()).await?;
-    println!("Found {} related issues in DB", db_related.len());
+    info!("Found {} related issues in DB", db_related.len());
 
     // Build issue body with sections in case of regression, related, etc
     let mut body = String::new();
@@ -344,24 +345,24 @@ async fn process_critical_error(
         labels.push("regression".to_string());
     }
 
-    println!("Creating GitHub issue...");
-    println!("Title: {}", title);
-    println!("Labels: {:?}", labels);
+    info!("Creating GitHub issue...");
+    info!("Title: {}", title);
+    info!("Labels: {:?}", labels);
 
     let issue_number = match create_issue(github_client, &title, &body, labels).await {
         Ok(num) => {
-            println!("Created issue #{}", num);
+            info!("Created issue #{}", num);
             num
         }
         Err(e) => {
-            eprintln!("Failed to create issue: {}", e);
+            error!("Failed to create issue: {}", e);
             return Err(e);
         }
     };
 
     // Comment on related closed issues to link back to the new one. Is optional
     if !top_closed_issues.is_empty() {
-        println!("Linking to related closed issues...");
+        info!("Linking to related closed issues...");
 
         for (closed_num, score) in top_closed_issues.iter().take(3) {
             let link_comment = format!(
@@ -376,8 +377,8 @@ async fn process_critical_error(
             );
 
             match add_comment_to_issue(github_client, *closed_num, &link_comment).await {
-                Ok(_) => println!("Added backlink comment to closed issue #{}", closed_num),
-                Err(e) => eprintln!("Failed to add backlink to #{}: {}", closed_num, e),
+                Ok(_) => info!("Added backlink comment to closed issue #{}", closed_num),
+                Err(e) => error!("Failed to add backlink to #{}: {}", closed_num, e),
             }
         }
     }
@@ -389,8 +390,8 @@ async fn process_critical_error(
         .chain(db_related.into_iter())
         .collect();
 
-    println!("Storing issue in database...");
-    println!("Linked to {} related issues", all_related.len());
+    info!("Storing issue in database...");
+    info!("Linked to {} related issues", all_related.len());
 
     store_github_issue(
         db_conn,
@@ -403,7 +404,7 @@ async fn process_critical_error(
     )
     .await?;
 
-    println!(
+    info!(
         "Created and stored issue #{} for {}",
         issue_number, error.error_pattern
     );

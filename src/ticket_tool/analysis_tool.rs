@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use snafu::Snafu;
 use tokio::sync::Mutex;
+use tracing::info;
 
 use crate::state::agent_state::AgentState;
 
@@ -120,16 +121,16 @@ impl Tool for AnalysisTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
-        println!("ANALYSIS RECEIVED:");
-        println!("   Summary: {}", args.summary);
-        println!("   Critical Errors: {}", args.critical_errors.len());
-        println!("   Warnings: {}", args.warnings.len());
+        info!("ANALYSIS RECEIVED:");
+        info!("   Summary: {}", args.summary);
+        info!("   Critical Errors: {}", args.critical_errors.len());
+        info!("   Warnings: {}", args.warnings.len());
 
         let mut state = self.state.lock().await;
 
         state.analysis = Some(args);
 
-        println!("Analysis run and stored in state");
+        info!("Analysis run and stored in state");
 
         Ok(())
     }

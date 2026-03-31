@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
+use tracing::info;
 
 use crate::agents::agent_call::run_dev_agent;
 use crate::planner::{PlannerAction, planner};
@@ -26,7 +27,7 @@ pub async fn confidence_worker(state: Arc<AppState>) {
                     metrics.is_agent_running().await
                 };
 
-                println!("Agent running key exists? {}", running);
+                info!("Agent running key exists? {}", running);
 
                 if !running {
                     let summarized_errors = {
@@ -40,7 +41,7 @@ pub async fn confidence_worker(state: Arc<AppState>) {
                     let github_client = state.github.clone();
                     let metrics = state.metrics.clone();
 
-                    println!(
+                    info!(
                         "Triggering agent analysis with {} error patterns...",
                         summarized_errors.len()
                     );
@@ -57,11 +58,11 @@ pub async fn confidence_worker(state: Arc<AppState>) {
                         .await;
                     });
                 } else {
-                    println!("Agent already running, skipping...");
+                    info!("Agent already running, skipping...");
                 }
             }
             PlannerAction::Wait => {
-                println!("No issues found. Waiting for more information");
+                info!("No issues found. Waiting for more information");
             }
         }
     }

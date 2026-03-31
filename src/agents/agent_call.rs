@@ -8,6 +8,7 @@ use rig::tool::Tool;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::Mutex;
+use tracing::{error, info};
 
 use crate::github::client::GitHubClient;
 use crate::github::issues::{IssueMetadata, fetch_closed_issues};
@@ -30,18 +31,18 @@ pub async fn run_dev_agent(
 ) {
     let start = Instant::now();
 
-    println!(
+    info!(
         "Agent started with {} error patterns...",
         summarized_logs.len()
     );
 
     let closed_issues = match fetch_closed_issues(&github_client).await {
         Ok(issues) => {
-            println!("Loaded {} historical issues for context", issues.len());
+            info!("Loaded {} historical issues for context", issues.len());
             issues
         }
         Err(e) => {
-            eprintln!("Could not fetch historical issues: {}", e);
+            error!("Could not fetch historical issues: {}", e);
             Vec::new()
         }
     };
@@ -118,40 +119,40 @@ pub async fn run_dev_agent(
         Ok(_) => {
             let state_lock = state.lock().await;
             if state_lock.errors_processed && state_lock.warnings_processed {
-                println!("=== Agent Complete ===");
-                println!(
+                info!("Agent Complete");
+                info!(
                     "Critical errors filed: {}",
                     state_lock.processed_errors.len()
                 );
-                println!("Warnings recorded: {}", state_lock.processed_warnings.len());
+                info!("Warnings recorded: {}", state_lock.processed_warnings.len());
             } else {
-                eprintln!("Agent finished but skipped tools, running fallback...");
+                error!("Agent finished but skipped tools, running fallback...");
                 drop(state_lock);
                 run_fallback_pipeline(&ctx, &state).await;
             }
         }
         Err(e) => {
-            eprintln!("Agent error: {}, running fallback...", e);
+            error!("Agent error: {}, running fallback...", e);
             run_fallback_pipeline(&ctx, &state).await;
         }
     }
 
     let _: Result<(), redis::RedisError> = redis_conn.del("agent:running").await;
-    println!("Agent finished in {:?}", start.elapsed());
+    info!("Agent finished in {:?}", start.elapsed());
 }
 
 async fn run_fallback_pipeline(ctx: &Arc<AgentContext>, state: &Arc<Mutex<AgentState>>) {
-    println!("Running deterministic fallback pipeline...");
+    info!("Running deterministic fallback pipeline...");
 
     {
         let s = state.lock().await;
         if s.analysis.is_none() {
-            eprintln!("No analysis available from submit_analysis, cannot run fallback.");
+            error!("No analysis available from submit_analysis, cannot run fallback.");
             return;
         }
     }
 
-    println!("Fallback: running error_processor...");
+    info!("Fallback: running error_processor...");
     if let Err(e) = (CriticalErrorTool {
         ctx: ctx.clone(),
         state: state.clone(),
@@ -159,10 +160,10 @@ async fn run_fallback_pipeline(ctx: &Arc<AgentContext>, state: &Arc<Mutex<AgentS
     .call(EmptyArgs {}))
     .await
     {
-        eprintln!("Fallback error_processor failed: {}", e);
+        error!("Fallback error_processor failed: {}", e);
     }
 
-    println!("Fallback: running warning_processor...");
+    info!("Fallback: running warning_processor...");
     if let Err(e) = (WarningTool {
         ctx: ctx.clone(),
         state: state.clone(),
@@ -170,7 +171,7 @@ async fn run_fallback_pipeline(ctx: &Arc<AgentContext>, state: &Arc<Mutex<AgentS
     .call(EmptyArgs {}))
     .await
     {
-        eprintln!("Fallback warning_processor failed: {}", e);
+        error!("Fallback warning_processor failed: {}", e);
     }
 }
 

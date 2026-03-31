@@ -1,6 +1,7 @@
 use axum::{Json, extract::State, http::StatusCode};
 use serde::Deserialize;
 use std::sync::Arc;
+use tracing::{error, info};
 
 use crate::database::init_db::update_issue_state;
 use crate::server::state::AppState;
@@ -33,9 +34,9 @@ pub async fn github_webhook(
 
         tokio::spawn(async move {
             if let Err(e) = update_issue_state(db, issue_number, issue_state).await {
-                eprintln!("Failed to update issue state: {}", e);
+                error!("Failed to update issue state: {}", e);
             } else {
-                println!("Updated issue #{} state in database", issue_number);
+                info!("Updated issue #{} state in database", issue_number);
             }
         });
     }

@@ -1,4 +1,5 @@
 use crate::github::issues::IssueMetadata;
+use tracing::info;
 
 /// Calculate similarity score between two strings (0.0 to 1.0)
 pub fn calculate_similarity(s1: &str, s2: &str) -> f64 {
@@ -62,13 +63,13 @@ pub fn find_similar_issues(
     issues: &[IssueMetadata],
     threshold: f64,
 ) -> Vec<(u64, f64)> {
-    println!("Similarity matching:");
-    println!("Query: '{}'", error_description);
-    println!("Searching {} issues", issues.len());
-    println!("Threshold: {:.2}", threshold);
+    info!("Similarity matching:");
+    info!("Query: '{}'", error_description);
+    info!("Searching {} issues", issues.len());
+    info!("Threshold: {:.2}", threshold);
 
     if issues.is_empty() {
-        println!("No issues to search!");
+        info!("No issues to search!");
         return Vec::new();
     }
 
@@ -92,14 +93,14 @@ pub fn find_similar_issues(
     all_scores.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     // Show top 5 matches regardless of threshold
-    println!("matches:");
+    info!("matches:");
     for (num, score, title) in all_scores.iter().take(5) {
         let status = if *score >= threshold {
             "meets"
         } else {
             "fails"
         };
-        println!("{} #{} ({:.2}): {}", status, num, score, title);
+        info!("{} #{} ({:.2}): {}", status, num, score, title);
     }
 
     // Filter by threshold
@@ -109,7 +110,7 @@ pub fn find_similar_issues(
         .map(|(num, score, _)| (num, score))
         .collect();
 
-    println!(
+    info!(
         "Result: {} matches above threshold {:.2}",
         similarities.len(),
         threshold

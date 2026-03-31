@@ -3,6 +3,7 @@ use serde_json::json;
 use snafu::Snafu;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::{error, info};
 
 use crate::database::init_db::store_warning;
 use crate::state::{agent_context::AgentContext, agent_state::AgentState, agent_state::EmptyArgs};
@@ -47,7 +48,7 @@ impl Tool for WarningTool {
         };
 
         if analysis.warnings.is_empty() {
-            println!("Warnings are empty.");
+            info!("Warnings are empty.");
             state.warnings_processed = true;
             return Ok(());
         }
@@ -61,7 +62,7 @@ impl Tool for WarningTool {
             )
             .await
             {
-                eprintln!("Failed to store warning: {}", e);
+                error!("Failed to store warning: {}", e);
             }
             state.processed_warnings.push(warning);
         }

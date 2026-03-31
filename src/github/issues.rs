@@ -1,6 +1,7 @@
 use crate::github::client::GitHubClient;
 use octocrab::models::issues::Issue;
 use octocrab::params::State;
+use tracing::info;
 
 #[derive(Clone, Debug)]
 pub struct IssueMetadata {
@@ -47,7 +48,7 @@ pub async fn create_issue(
         .send()
         .await?;
 
-    println!("Created GitHub issue #{}: {}", issue.number, issue.title);
+    info!("Created GitHub issue #{}: {}", issue.number, issue.title);
 
     Ok(issue.number)
 }
@@ -55,15 +56,15 @@ pub async fn create_issue(
 pub async fn fetch_closed_issues(
     client: &GitHubClient,
 ) -> Result<Vec<IssueMetadata>, Box<dyn std::error::Error>> {
-    println!("GitHub API: Fetching closed issues...");
-    println!("Repository: {}/{}", client.owner(), client.repo());
+    info!("GitHub API: Fetching closed issues...");
+    info!("Repository: {}/{}", client.owner(), client.repo());
 
     let mut all_issues = Vec::new();
     let mut page = 1u32;
 
     // Fetch multiple pages if needed
     loop {
-        println!("Fetching page {}...", page);
+        info!("Fetching page {}...", page);
 
         let page_result = client
             .client()
@@ -76,7 +77,7 @@ pub async fn fetch_closed_issues(
             .await?;
 
         let items_count = page_result.items.len();
-        println!("Found {} issues on page {}", items_count, page);
+        info!("Found {} issues on page {}", items_count, page);
 
         if items_count == 0 {
             break;
@@ -93,29 +94,14 @@ pub async fn fetch_closed_issues(
 
         // Safety limit to avoid infinite loops
         if page > 10 {
-            println!("Reached page limit, stopping");
+            info!("Reached page limit, stopping");
             break;
         }
     }
 
-    println!("Total closed issues fetched: {}", all_issues.len());
+    info!("Total closed issues fetched: {}", all_issues.len());
 
     Ok(all_issues)
-}
-
-pub async fn fetch_all_issues(
-    client: &GitHubClient,
-) -> Result<Vec<IssueMetadata>, Box<dyn std::error::Error>> {
-    let issues = client
-        .client()
-        .issues(client.owner(), client.repo())
-        .list()
-        .state(State::All)
-        .per_page(100)
-        .send()
-        .await?;
-
-    Ok(issues.items.into_iter().map(IssueMetadata::from).collect())
 }
 
 pub async fn add_comment_to_issue(
@@ -129,7 +115,7 @@ pub async fn add_comment_to_issue(
         .create_comment(issue_number, comment)
         .await?;
 
-    println!("Added comment to issue #{}", issue_number);
+    info!("Added comment to issue #{}", issue_number);
 
     Ok(())
 }
@@ -146,7 +132,7 @@ pub async fn close_issue(
         .send()
         .await?;
 
-    println!("Closed issue #{}", issue_number);
+    info!("Closed issue #{}", issue_number);
 
     Ok(())
 }
