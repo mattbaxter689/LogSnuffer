@@ -237,6 +237,8 @@ For each critical error:
   - Links to top 3 related closed issues
   - Automatic labels (severity, automated, regression)
 
+An example issue can be found in the `Issues` portion of this repository
+
 ### 5. Issue Tracking
 
 - GitHub webhook updates database when issues are closed
