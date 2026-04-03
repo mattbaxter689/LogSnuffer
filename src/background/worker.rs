@@ -1,3 +1,4 @@
+use metrics::histogram;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
@@ -22,6 +23,7 @@ pub async fn confidence_worker(state: Arc<AppState>) {
         // Check planner action
         match planner(&report.score) {
             PlannerAction::TicketCreation => {
+                histogram!("error_confidence_score").record(report.score);
                 let running = {
                     let mut metrics = state.metrics.lock().await;
                     metrics.is_agent_running().await

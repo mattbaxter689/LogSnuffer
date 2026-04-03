@@ -1,4 +1,5 @@
 use crate::github::client::GitHubClient;
+use metrics::{counter, histogram};
 use octocrab::models::issues::Issue;
 use octocrab::params::State;
 use tracing::info;
@@ -49,6 +50,7 @@ pub async fn create_issue(
         .await?;
 
     info!("Created GitHub issue #{}: {}", issue.number, issue.title);
+    counter!("total_created_github_issues").increment(1);
 
     Ok(issue.number)
 }
@@ -100,6 +102,7 @@ pub async fn fetch_closed_issues(
     }
 
     info!("Total closed issues fetched: {}", all_issues.len());
+    histogram!("total_closed_issues_fetched").record(all_issues.len() as f64);
 
     Ok(all_issues)
 }
@@ -116,23 +119,6 @@ pub async fn add_comment_to_issue(
         .await?;
 
     info!("Added comment to issue #{}", issue_number);
-
-    Ok(())
-}
-
-pub async fn close_issue(
-    client: &GitHubClient,
-    issue_number: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    client
-        .client()
-        .issues(client.owner(), client.repo())
-        .update(issue_number)
-        .state(octocrab::models::IssueState::Closed)
-        .send()
-        .await?;
-
-    info!("Closed issue #{}", issue_number);
 
     Ok(())
 }

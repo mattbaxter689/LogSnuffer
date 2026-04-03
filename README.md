@@ -4,9 +4,11 @@
 
 LogSnuffer is an autonomous log monitoring system that uses AI to analyze error patterns, assess severity, and automatically create GitHub issues with historical context. It combines real-time log aggregation with LLM-powered analysis to reduce manual incident response time.
 
-### Checklist
+### Nice to Haves
 
-- [ ] add /metrics endpoint for prometheus
+- [ ] Rate-limiting for application
+- [ ] Upgrade to postgres database
+- [ ] Better way to manage thresholds
 
 ---
 
@@ -17,10 +19,11 @@ As noted toward the end of this file, there are examples of how the project can 
 This project started as a simple example, but quickly grew into something that I wanted to iterate on and improve. While this is something that could be used for production systems, there are obviously costs that are associated
 with something like this, especially when calling the LLM every time there are issues. Now, this is also the result of me creating a log generator that pushes error like crazy, but still. There should also be protections in
 place to reduce the potential cost of LLM calls, perhaps LLM call limits in a time frame, batching of logs rather than the time binning methodology, etc. If this were a true production agent,
-these would have to be considered to reduce the potential ballooning cost of the application. Additionally, rate limiting, and additional monitoring with some like Prometheus should be used.
+these would have to be considered to reduce the potential ballooning cost of the application. Additionally, rate limiting and further monitoring should be used as well
 
 Finally, is this project rough around the edges? Absolutely it is, yes. Obviously there are some things that I thing should change in terms of readability, or just development overall,
-but this project also became much larger than I had originally anticipated. There are definitely design changes, or structural changes I would make, but as a first attempt at an agentic Rust program, I'm happy
+but this project also became much larger than I had originally anticipated. I think this is something that, as time goes on and I revisit this, I may make changes to or update.
+I think Rust has a special place in the agentic space, and I am very excited to see how it takes hold
 
 ---
 
@@ -35,6 +38,7 @@ LogSnuffer addresses the challenge of distinguishing critical incidents from tra
 - Links related incidents through similarity matching
 - Prevents duplicate issue creation
 - Tracks sub-threshold errors as warnings
+- Prometheus metrics scraping endpoint for performance metrics
 
 ---
 
@@ -134,6 +138,8 @@ This can and should be a longer window. I decided on 30 seconds to allow for the
 - Adds comments to existing issues when duplicates detected
 
 **SQLite Database**: Stores logs, GitHub issue metadata, and warnings for historical analysis
+
+**Prometheus Metrics**: Registers metrics endpoint for prometheus and application monitoring
 
 ---
 
@@ -265,7 +271,6 @@ The system prevents duplicate issues through:
 - **PostgreSQL Support**: Replace SQLite for better concurrency handling.
 - **Configurable Thresholds**: Move hardcoded values (similarity thresholds, time windows) to configuration file
 - **Rate Limiting**: Prevent API abuse and LLM overuse
-- **Prometheus Metrics**: Export confidence scores and error rates for monitoring
 
 ### Medium Priority
 
@@ -279,5 +284,5 @@ The system prevents duplicate issues through:
 
 - **SQLite Concurrency**: High log volumes may cause database locking; consider PostgreSQL
 - **LLM Latency**: Agent analysis takes 5-30 seconds; not suitable for sub-second SLAs
-- **Memory Usage**: Redis stores 30 seconds of logs in memory; adjust window size for high-volume systems
+- **Memory Usage**: Redis stores 30 seconds of logs in memory; adjust window size for high-volume systems, which should often be the case to collect enough information
 - **Single Instance**: Current design assumes one server instance; scaling requires Redis coordination

@@ -1,4 +1,5 @@
 use async_rusqlite::Connection;
+use metrics::{counter, histogram};
 use redis::AsyncCommands;
 use redis::aio::ConnectionManager;
 use rig::client::CompletionClient;
@@ -35,6 +36,9 @@ pub async fn run_dev_agent(
         "Agent started with {} error patterns...",
         summarized_logs.len()
     );
+    counter!("total_agent_calls", "agent" => "analysis_agent").increment(1);
+    counter!("total_error_logs", "agent" => "analysis_agent", "pattern" => "error_patterns")
+        .increment(summarized_logs.len() as u64);
 
     let closed_issues = match fetch_closed_issues(&github_client).await {
         Ok(issues) => {
@@ -139,10 +143,12 @@ pub async fn run_dev_agent(
 
     let _: Result<(), redis::RedisError> = redis_conn.del("agent:running").await;
     info!("Agent finished in {:?}", start.elapsed());
+    histogram!("total_agent_runtime", "model" => "gemini-2.5").record(start.elapsed());
 }
 
 async fn run_fallback_pipeline(ctx: &Arc<AgentContext>, state: &Arc<Mutex<AgentState>>) {
     info!("Running deterministic fallback pipeline...");
+    counter!("total_deterministic_pipeline_runs", "agent" => "analysis_agent").increment(1);
 
     {
         let s = state.lock().await;

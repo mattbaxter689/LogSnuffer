@@ -10,9 +10,10 @@ mod state;
 mod ticket_tool;
 
 use axum::{
-    Router,
+    Extension, Router, middleware,
     routing::{get, post},
 };
+use metrics_exporter_prometheus::PrometheusBuilder;
 use rustls::crypto::{CryptoProvider, ring::default_provider};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -22,13 +23,19 @@ use tracing::info;
 use crate::database::init_db::init_db;
 use crate::github::client::GitHubClient;
 use crate::redis_metrics::metrics::RedisMetrics;
-use crate::server::handlers::{get_confidence, health_check, ingest_logs};
+use crate::server::handlers::{
+    get_confidence, health_check, ingest_logs, metrics_handler, metrics_middleware,
+};
 use crate::server::state::AppState;
 use crate::server::webhook::github_webhook;
 
 #[tokio::main]
 async fn main() {
     CryptoProvider::install_default(default_provider()).unwrap();
+
+    let prometheus_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .expect("Failed to install prometheus recorder");
 
     tracing_subscriber::fmt::init();
 
@@ -78,6 +85,9 @@ async fn main() {
         .route("/api/logs", post(ingest_logs))
         .route("/api/confidence", get(get_confidence))
         .route("/webhooks/github", post(github_webhook))
+        .route("/metrics", get(metrics_handler))
+        .layer(Extension(prometheus_handle))
+        .layer(middleware::from_fn(metrics_middleware))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

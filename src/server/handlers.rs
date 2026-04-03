@@ -1,6 +1,15 @@
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Extension, Json,
+    extract::State,
+    http::{Request, StatusCode},
+    middleware::Next,
+    response::IntoResponse,
+};
+use metrics::{counter, histogram};
+use metrics_exporter_prometheus::PrometheusHandle;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use std::time::Instant;
 use tracing::error;
 
 use crate::database::init_db::store_log;
@@ -75,4 +84,37 @@ pub async fn get_confidence(State(state): State<Arc<AppState>>) -> Json<Confiden
         confidence,
         message: format!("Current Confidence: {:.3}", confidence),
     })
+}
+
+pub async fn metrics_handler(Extension(handle): Extension<PrometheusHandle>) -> impl IntoResponse {
+    handle.render()
+}
+
+pub async fn metrics_middleware(req: Request<axum::body::Body>, next: Next) -> impl IntoResponse {
+    let method = req.method().to_string();
+    let path = req.uri().path().to_string();
+
+    let start = Instant::now();
+
+    let response = next.run(req).await;
+
+    let status = response.status().as_u16().to_string();
+    let duration = start.elapsed().as_secs_f64();
+
+    counter!(
+        "http_requests_total",
+        "method" => method.clone(),
+        "status" => status.clone()
+    )
+    .increment(1);
+
+    histogram!(
+        "http_request_duration_seconds",
+        "method" => method,
+        "path" => path,
+        "status" => status
+    )
+    .record(duration);
+
+    response
 }
