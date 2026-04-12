@@ -24,6 +24,7 @@ pub struct AnalysisArgs {
 
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct CriticalError {
+    pub id: String,
     pub error_pattern: String,
     // severity could also be an enum, and most likely should be
     pub severity: String,
@@ -59,7 +60,7 @@ impl Tool for AnalysisTool {
                 "properties": {
                     "critical_errors": {
                         "type": "array",
-                        "description": "Errors that are severe enough to warrant GitHub issues",
+                        "description": "Errors that are severe enough to warrant GitHub issues. Do not provide IDs; they will be generated automatically",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -121,6 +122,16 @@ impl Tool for AnalysisTool {
     }
 
     async fn call(&self, args: Self::Args) -> Result<Self::Output, Self::Error> {
+        let mut args = args;
+
+        for error in &mut args.critical_errors {
+            error.id = uuid::Uuid::new_v4().to_string();
+            info!(
+                "Generated ID {} for pattern: {}",
+                error.id, error.error_pattern
+            );
+        }
+
         info!("ANALYSIS RECEIVED:");
         info!("   Summary: {}", args.summary);
         info!("   Critical Errors: {}", args.critical_errors.len());
@@ -129,8 +140,6 @@ impl Tool for AnalysisTool {
         let mut state = self.state.lock().await;
 
         state.analysis = Some(args);
-
-        info!("Analysis run and stored in state");
 
         Ok(())
     }

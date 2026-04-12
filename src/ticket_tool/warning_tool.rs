@@ -40,6 +40,8 @@ impl Tool for WarningTool {
 
     // args in this case is not needed here. We do not reference them in this instance
     async fn call(&self, _args: Self::Args) -> Result<Self::Output, Self::Error> {
+        info!("Executing Warning tool");
+
         let mut state = self.state.lock().await;
 
         let analysis = match &state.analysis {

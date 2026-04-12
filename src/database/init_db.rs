@@ -177,31 +177,3 @@ pub async fn store_warning(
 
     Ok(())
 }
-
-pub async fn fetch_related_issues(
-    conn: Connection,
-    error_pattern: String,
-) -> Result<Vec<u64>, Box<dyn std::error::Error + Send + Sync>> {
-    let issues = conn.call(move |conn| {
-        let mut stmt = conn.prepare(
-            "SELECT issue_number FROM github_issues 
-             WHERE error_pattern LIKE ?1 AND state = 'closed'
-             ORDER BY closed_at DESC
-             LIMIT 5"
-        )?;
-        
-        let pattern = format!("%{}%", error_pattern);
-        let issues: Vec<u64> = stmt
-            .query_map([pattern], |row| {
-                let num: i64 = row.get(0)?;
-                Ok(num as u64)
-            })?
-            .filter_map(Result::ok)
-            .collect();
-        
-        Ok::<_, rusqlite::Error>(issues)
-    })
-    .await?;
-
-    Ok(issues)
-}

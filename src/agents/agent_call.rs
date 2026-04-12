@@ -18,7 +18,9 @@ use crate::redis_metrics::metrics::{ConfidenceReport, RedisMetrics};
 use crate::state::agent_context::AgentContext;
 use crate::state::agent_state::{AgentState, EmptyArgs};
 use crate::ticket_tool::analysis_tool::AnalysisTool;
-use crate::ticket_tool::error_tool::CriticalErrorTool;
+use crate::ticket_tool::error_tool::{
+    CriticalErrorTool, ErrorAssessment, TriageAction, TriageArgs,
+};
 use crate::ticket_tool::fetchlogs_tool::FetchLogsTool;
 use crate::ticket_tool::warning_tool::WarningTool;
 
@@ -150,22 +152,43 @@ async fn run_fallback_pipeline(ctx: &Arc<AgentContext>, state: &Arc<Mutex<AgentS
     info!("Running deterministic fallback pipeline...");
     counter!("total_deterministic_pipeline_runs", "agent" => "analysis_agent").increment(1);
 
-    {
+    // Extract analysis, check for completion or failure
+    // Warnings are fetched from State
+    let (critical_errors, _) = {
         let s = state.lock().await;
-        if s.analysis.is_none() {
-            error!("No analysis available from submit_analysis, cannot run fallback.");
-            return;
+        match &s.analysis {
+            Some(a) => (a.critical_errors.clone(), a.warnings.clone()),
+            None => {
+                error!("No analysis available from submit_analysis, cannot run fallback.");
+                return;
+            }
         }
-    }
+    };
 
-    info!("Fallback: running error_processor...");
-    if let Err(e) = (CriticalErrorTool {
+    let triage_args = TriageArgs {
+        assessments: critical_errors
+            .into_iter()
+            .map(|err| ErrorAssessment {
+                error_id: err.id,
+                action: TriageAction::Create,
+                duplicate_of_id: None,
+                related_closed_id: None,
+                proposed_title: Some(format!("[FALLBACK] {}", err.error_pattern)),
+                proposed_body: Some(err.description),
+                reasoning: "Deterministic fallback triggered due to agent failure.".to_string(),
+            })
+            .collect(),
+    };
+    info!(
+        "Fallback: running error_processor with {} assessments...",
+        triage_args.assessments.len()
+    );
+    let error_tool = CriticalErrorTool {
         ctx: ctx.clone(),
         state: state.clone(),
-    }
-    .call(EmptyArgs {}))
-    .await
-    {
+    };
+
+    if let Err(e) = error_tool.call(triage_args).await {
         error!("Fallback error_processor failed: {}", e);
     }
 

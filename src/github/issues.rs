@@ -2,9 +2,10 @@ use crate::github::client::GitHubClient;
 use metrics::{counter, histogram};
 use octocrab::models::issues::Issue;
 use octocrab::params::State;
+use serde::Serialize;
 use tracing::info;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 pub struct IssueMetadata {
     pub number: u64,
     pub title: String,
