@@ -1,13 +1,33 @@
 use std::sync::Arc;
 
 use rig::{completion::ToolDefinition, tool::Tool};
+use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::to_value;
 use snafu::Snafu;
 use tokio::sync::Mutex;
 use tracing::info;
+use uuid::Uuid;
 
 use crate::state::agent_state::AgentState;
+
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Critical,
+    High,
+    Medium,
+}
+
+impl Severity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Critical => "critical",
+            Self::High => "high",
+            Self::Medium => "medium",
+        }
+    }
+}
 
 #[derive(Debug, Snafu)]
 pub enum AnalysisToolError {
@@ -15,25 +35,24 @@ pub enum AnalysisToolError {
     Serialization { source: serde_json::Error },
 }
 
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, JsonSchema)]
 pub struct AnalysisArgs {
     pub critical_errors: Vec<CriticalError>,
     pub warnings: Vec<Warning>,
     pub summary: String,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct CriticalError {
     pub id: String,
     pub error_pattern: String,
-    // severity could also be an enum, and most likely should be
-    pub severity: String,
+    pub severity: Severity,
     pub description: String,
     pub suggested_fix: Option<String>,
     pub should_create_issue: bool,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug)]
+#[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct Warning {
     pub error_pattern: String,
     pub description: String,
@@ -55,69 +74,7 @@ impl Tool for AnalysisTool {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Submit your analysis of the error logs, including which errors warrant GitHub issues and which are just warnings to monitor".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "critical_errors": {
-                        "type": "array",
-                        "description": "Errors that are severe enough to warrant GitHub issues. Do not provide IDs; they will be generated automatically",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "error_pattern": {
-                                    "type": "string",
-                                    "description": "The error message pattern (e.g., 'db_connection_timeout')"
-                                },
-                                "severity": {
-                                    "type": "string",
-                                    "enum": ["critical", "high", "medium"],
-                                    "description": "Severity level"
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "Detailed description of the issue and its impact"
-                                },
-                                "suggested_fix": {
-                                    "type": "string",
-                                    "description": "Optional: suggested fix or investigation steps"
-                                },
-                                "should_create_issue": {
-                                    "type": "boolean",
-                                    "description": "Whether this warrants a GitHub issue"
-                                }
-                            },
-                            "required": ["error_pattern", "severity", "description", "should_create_issue"]
-                        }
-                    },
-                    "warnings": {
-                        "type": "array",
-                        "description": "Errors that should be monitored but don't need immediate issues",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "error_pattern": {
-                                    "type": "string",
-                                    "description": "The error message pattern"
-                                },
-                                "description": {
-                                    "type": "string",
-                                    "description": "Description of the warning"
-                                },
-                                "monitoring_recommendation": {
-                                    "type": "string",
-                                    "description": "How to monitor or when to escalate"
-                                }
-                            },
-                            "required": ["error_pattern", "description", "monitoring_recommendation"]
-                        }
-                    },
-                    "summary": {
-                        "type": "string",
-                        "description": "Overall summary of the system health"
-                    }
-                },
-                "required": ["critical_errors", "warnings", "summary"]
-            }),
+            parameters: to_value(schema_for!(AnalysisArgs)).unwrap(),
         }
     }
 
@@ -125,7 +82,7 @@ impl Tool for AnalysisTool {
         let mut args = args;
 
         for error in &mut args.critical_errors {
-            error.id = uuid::Uuid::new_v4().to_string();
+            error.id = Uuid::new_v4().to_string();
             info!(
                 "Generated ID {} for pattern: {}",
                 error.id, error.error_pattern

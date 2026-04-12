@@ -1,6 +1,8 @@
 use async_rusqlite::Connection;
 use rig::{completion::ToolDefinition, tool::Tool};
+use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize};
+use serde_json::to_value;
 use snafu::Snafu;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -21,7 +23,7 @@ pub enum ToolError {
 }
 
 // Refer to action as snake case for inside the Github issue
-#[derive(Deserialize, schemars::JsonSchema, Debug, Serialize)]
+#[derive(Deserialize, JsonSchema, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TriageAction {
     /// Create a brand new issue
@@ -34,7 +36,7 @@ pub enum TriageAction {
     Skip,
 }
 
-#[derive(Deserialize, schemars::JsonSchema, Debug, Serialize)]
+#[derive(Deserialize, JsonSchema, Debug, Serialize)]
 pub struct ErrorAssessment {
     pub error_id: String,
     pub action: TriageAction,
@@ -45,7 +47,7 @@ pub struct ErrorAssessment {
     pub reasoning: String,
 }
 
-#[derive(Deserialize, schemars::JsonSchema, Serialize)]
+#[derive(Deserialize, JsonSchema, Serialize)]
 pub struct TriageArgs {
     pub assessments: Vec<ErrorAssessment>,
 }
@@ -59,14 +61,14 @@ impl Tool for CriticalErrorTool {
     const NAME: &'static str = "error_processor";
 
     type Error = ToolError;
-    type Args = TriageArgs; // Changed from EmptyArgs to our new batch schema
+    type Args = TriageArgs;
     type Output = ();
 
     async fn definition(&self, _prompt: String) -> ToolDefinition {
         ToolDefinition {
             name: Self::NAME.to_string(),
             description: "Processes a batch of critical errors. For each error, decide if a new issue is needed, if it's a duplicate of an open issue, or related to a closed one.".to_string(),
-            parameters: serde_json::to_value(schemars::schema_for!(TriageArgs)).unwrap(),
+            parameters: to_value(schema_for!(TriageArgs)).unwrap(),
         }
     }
 
@@ -123,9 +125,11 @@ async fn process_critical_error(
 
     match assessment.action {
         TriageAction::Create => {
-            let title = assessment
-                .proposed_title
-                .unwrap_or(format!("[{}] {}", error.severity, error.error_pattern));
+            let title = assessment.proposed_title.unwrap_or(format!(
+                "[{}] {}",
+                error.severity.as_str(),
+                error.error_pattern
+            ));
             let mut body = assessment
                 .proposed_body
                 .unwrap_or(error.description.clone());
@@ -148,7 +152,7 @@ async fn process_critical_error(
 
             let labels = vec![
                 "automated".into(),
-                error.severity.clone(),
+                error.severity.as_str().to_string(),
                 "production".into(),
             ];
             let issue_number = create_issue(github_client, &title, &body, labels).await?;
