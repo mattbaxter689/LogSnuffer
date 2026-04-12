@@ -37,28 +37,40 @@ pub enum AnalysisToolError {
 
 #[derive(Deserialize, Serialize, Debug, JsonSchema)]
 pub struct AnalysisArgs {
+    /// A list of severe error patterns that likely require GitHub issues.
     pub critical_errors: Vec<CriticalError>,
+    /// Non-critical anomalies that should be logged but don't need immediate tickets.
     pub warnings: Vec<Warning>,
+    /// High-level executive summary of the system health and identified patterns.
     pub summary: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct CriticalError {
+    /// SYSTEM USE ONLY. Do not populate this field.
+    #[serde(default)]
     pub id: String,
+    /// The unique error signature or message pattern.
     pub error_pattern: String,
+    /// Importance of the fix.
     pub severity: Severity,
+    /// Detailed analysis of why this is happening and the potential impact.
     pub description: String,
+    /// Optional: Specific code paths or fixes to investigate.
     pub suggested_fix: Option<String>,
+    /// Set to true if this specifically warrants a new GitHub issue.
     pub should_create_issue: bool,
 }
 
 #[derive(Deserialize, Serialize, Clone, Debug, JsonSchema)]
 pub struct Warning {
+    /// The error message or behavior observed.
     pub error_pattern: String,
+    /// Why this was classified as a warning rather than a critical error.
     pub description: String,
+    /// Advice for SREs on how to monitor this pattern going forward.
     pub monitoring_recommendation: String,
 }
-
 pub struct AnalysisTool {
     pub state: Arc<Mutex<AgentState>>,
 }

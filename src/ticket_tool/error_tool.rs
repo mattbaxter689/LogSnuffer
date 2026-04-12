@@ -38,20 +38,27 @@ pub enum TriageAction {
 
 #[derive(Deserialize, JsonSchema, Debug, Serialize)]
 pub struct ErrorAssessment {
+    /// The unique ID generated in the submit_analysis step.
     pub error_id: String,
+    /// The specific triage action to take for this error.
     pub action: TriageAction,
+    /// If duplicate, provide the existing GitHub issue number.
     pub duplicate_of_id: Option<u64>,
+    /// If this is a regression, provide the related closed issue number.
     pub related_closed_id: Option<u64>,
+    /// The title to be used for a new GitHub issue.
     pub proposed_title: Option<String>,
+    /// The detailed markdown body for the GitHub issue.
     pub proposed_body: Option<String>,
+    /// Explain why this specific action was chosen based on historical context.
     pub reasoning: String,
 }
 
 #[derive(Deserialize, JsonSchema, Serialize)]
 pub struct TriageArgs {
+    /// A batch of assessments for all critical errors identified in the analysis.
     pub assessments: Vec<ErrorAssessment>,
 }
-
 pub struct CriticalErrorTool {
     pub ctx: Arc<AgentContext>,
     pub state: Arc<Mutex<AgentState>>,
