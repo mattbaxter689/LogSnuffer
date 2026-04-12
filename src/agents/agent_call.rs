@@ -11,6 +11,7 @@ use std::time::Instant;
 use tokio::sync::Mutex;
 use tracing::{error, info};
 
+use crate::database::init_db::get_recent_lessons;
 use crate::github::client::GitHubClient;
 use crate::github::issues::{IssueMetadata, fetch_closed_issues};
 use crate::log_generator::log_methods::LogEntry;
@@ -22,6 +23,7 @@ use crate::ticket_tool::error_tool::{
     CriticalErrorTool, ErrorAssessment, TriageAction, TriageArgs,
 };
 use crate::ticket_tool::fetchlogs_tool::FetchLogsTool;
+use crate::ticket_tool::session_tool::SessionSummaryTool;
 use crate::ticket_tool::warning_tool::WarningTool;
 
 pub async fn run_dev_agent(
@@ -64,6 +66,8 @@ pub async fn run_dev_agent(
         metrics,
     });
 
+    let lessons = get_recent_lessons(ctx.db.clone()).await;
+
     let client = gemini::Client::new(
         std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY environment variable must be set"),
     )
@@ -92,20 +96,30 @@ pub async fn run_dev_agent(
 
     let agent = client
         .agent("gemini-2.5-pro")
-        .default_max_turns(12)
+        .default_max_turns(16)
         .preamble(
-            "You are an expert SRE agent analyzing production error logs.
+            format!(
+                "You are an expert SRE agent analyzing production error logs.
 
+            Lessions from previous runs:
+            The following are issues you encountered in previous runs. Use these to avoid repeating mistakes:
+            {}
+
+            Order of Operations:
             You MUST call all 4 tools in this exact order before giving a final response:
             1. fetch_logs (optional - call as needed before analyzing) 
             2. submit_analysis   - classify the logs into critical errors and warnings
             3. error_processor   - process and create GitHub issues for critical errors
             4. warning_processor - store warnings for monitoring
+            5. log_session_summary - store summary of session calls 
 
             Rules:
             - Call ONE tool per turn
             - Do NOT skip any tool
             - After each tool returns, immediately call the next one",
+                lessons
+            )
+            .as_str(),
         )
         .tool(FetchLogsTool { ctx: ctx.clone() })
         .tool(AnalysisTool {
@@ -119,6 +133,7 @@ pub async fn run_dev_agent(
             ctx: ctx.clone(),
             state: state.clone(),
         })
+        .tool(SessionSummaryTool { ctx: ctx.clone() })
         .build();
 
     match agent.prompt(&context).await {
