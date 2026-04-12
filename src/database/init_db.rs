@@ -50,6 +50,18 @@ pub async fn init_db() -> Connection {
             )",
             [],
         )?;
+
+        // Sessions auditing table
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS session_audits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                confidence_score INTEGER NOT NULL,
+                ingestion_feedback TEXT,
+                internal_monologue TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP)",
+            [],
+        )?;
         Ok::<(), rusqlite::Error>(())
     })
     .await
@@ -171,6 +183,54 @@ pub async fn store_warning(
             )?;
         }
         
+        Ok::<(), rusqlite::Error>(())
+    })
+    .await?;
+
+    Ok(())
+}
+
+pub async fn get_recent_lessons(conn: Connection) -> String {
+    match conn.call(move |conn| {
+        let mut stmt = conn.prepare(
+            "SELECT ingestion_feedback, internal_monologue 
+             FROM session_audits 
+             WHERE confidence_score < 7 
+             ORDER BY created_at DESC LIMIT 3"
+        )?;
+
+        let rows = stmt.query_map([], |row| {
+            let feedback: Option<String> = row.get(0)?;
+            let monologue: String = row.get(1)?;
+
+            Ok(format!(
+                "- Issue: {}\n  Context: {}", 
+                feedback.unwrap_or_else(|| "N/A".to_string()), 
+                monologue
+            ))
+        })?
+        .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+
+        Ok::<String, rusqlite::Error>(rows.join("\n"))
+    }).await {
+        Ok(lessons) if !lessons.is_empty() => lessons,
+        _ => "No major issues reported in recent sessions.".to_string(),
+    }
+}
+
+pub async fn store_session_audit(
+    conn: Connection,
+    session_id: String,
+    confidence_score: i32,
+    ingestion_feedback: Option<String>,
+    internal_monologue: String,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    conn.call(move |conn| {
+        conn.execute(
+            "INSERT INTO session_audits (session_id, confidence_score, ingestion_feedback, internal_monologue) 
+             VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![session_id, confidence_score, ingestion_feedback, internal_monologue],
+        )?;
         Ok::<(), rusqlite::Error>(())
     })
     .await?;
